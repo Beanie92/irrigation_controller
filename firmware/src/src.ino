@@ -116,6 +116,16 @@ int selectedSettingsMenuIndex = 0;
 
 // Manual Run zone index: 0..6 => zone = index+1
 int selectedManualZoneIndex = 0;
+int selectedManualDuration = 5;  // Default 5 minutes
+bool selectingDuration = false;  // Whether we're selecting duration or zone
+
+// -----------------------------------------------------------------------------
+//                           Zone Timer Variables
+// -----------------------------------------------------------------------------
+unsigned long zoneStartTime = 0;        // When current zone started
+unsigned long zoneDuration = 0;         // Duration for current zone in milliseconds
+int currentRunningZone = -1;            // Which zone is currently running (-1 = none)
+bool isTimedRun = false;                 // Whether this is a timed run or manual indefinite run
 
 // -----------------------------------------------------------------------------
 //                           Test Mode Variables
@@ -375,7 +385,22 @@ void loop() {
 
   // Additional logic for running states if needed
   if (currentState == STATE_RUNNING_ZONE) {
-    // e.g., check time-based zone run or cancellation
+    // Update display every 5 seconds to show current timing
+    static unsigned long lastDisplayUpdate = 0;
+    if (millis() - lastDisplayUpdate > 5000) {
+      lastDisplayUpdate = millis();
+      drawRunningZoneMenu();
+    }
+    
+    // Check for automatic zone timeout if it's a timed run
+    if (isTimedRun && zoneDuration > 0) {
+      unsigned long elapsed = millis() - zoneStartTime;
+      if (elapsed >= zoneDuration) {
+        DEBUG_PRINTLN("Zone timer expired - stopping zone");
+        stopZone();
+        enterState(STATE_MAIN_MENU);
+      }
+    }
   } else if (currentState == STATE_TEST_MODE && testModeActive) {
     updateTestMode();
   }
@@ -425,12 +450,20 @@ void handleEncoderMovement() {
       break;
 
     case STATE_MANUAL_RUN:
-      // Slide through zones 1..7
-      if (diff > 0) selectedManualZoneIndex++;
-      else          selectedManualZoneIndex--;
-      if      (selectedManualZoneIndex < 0)           selectedManualZoneIndex = ZONE_COUNT - 1;
-      else if (selectedManualZoneIndex >= ZONE_COUNT) selectedManualZoneIndex = 0;
-      DEBUG_PRINTF("Manual run zone selection: %d (%s)\n", selectedManualZoneIndex, relayLabels[selectedManualZoneIndex + 1]);
+      if (selectingDuration) {
+        // Adjust duration (1-120 minutes)
+        selectedManualDuration += diff;
+        if (selectedManualDuration < 1) selectedManualDuration = 120;
+        if (selectedManualDuration > 120) selectedManualDuration = 1;
+        DEBUG_PRINTF("Manual run duration selection: %d minutes\n", selectedManualDuration);
+      } else {
+        // Slide through zones 1..7
+        if (diff > 0) selectedManualZoneIndex++;
+        else          selectedManualZoneIndex--;
+        if      (selectedManualZoneIndex < 0)           selectedManualZoneIndex = ZONE_COUNT - 1;
+        else if (selectedManualZoneIndex >= ZONE_COUNT) selectedManualZoneIndex = 0;
+        DEBUG_PRINTF("Manual run zone selection: %d (%s)\n", selectedManualZoneIndex, relayLabels[selectedManualZoneIndex + 1]);
+      }
       drawManualRunMenu();
       break;
 
@@ -538,9 +571,16 @@ void handleButtonPress() {
           break;
 
         case STATE_MANUAL_RUN:
-          // Pressing button => Start the selected zone
-          DEBUG_PRINTF("Starting manual zone: %d\n", selectedManualZoneIndex + 1);
-          startManualZone(selectedManualZoneIndex + 1); // zoneIdx 1..7
+          if (selectingDuration) {
+            // Start the zone with selected duration
+            DEBUG_PRINTF("Starting manual zone: %d for %d minutes\n", selectedManualZoneIndex + 1, selectedManualDuration);
+            startManualZone(selectedManualZoneIndex + 1); // zoneIdx 1..7
+          } else {
+            // Move to duration selection
+            selectingDuration = true;
+            DEBUG_PRINTF("Moving to duration selection for zone %d\n", selectedManualZoneIndex + 1);
+            drawManualRunMenu();
+          }
           break;
 
         case STATE_SET_SYSTEM_TIME:
@@ -615,8 +655,9 @@ void enterState(ProgramState newState) {
       drawMainMenu();
       break;
     case STATE_MANUAL_RUN:
-      // Reset zone selection
+      // Reset zone selection and duration selection state
       selectedManualZoneIndex = 0;
+      selectingDuration = false;
       DEBUG_PRINTLN("Entering manual run mode");
       drawManualRunMenu();
       break;
@@ -781,21 +822,66 @@ void drawManualRunMenu() {
   screen.setCursor(10, 10);
   screen.println("Manual Run");
 
-  // Print instructions
-  screen.setCursor(10, 40);
-  screen.setTextColor(COLOR_RGB565_RED);
-  screen.println("Select Zone & Press Button");
+  if (selectingDuration) {
+    // Duration selection mode
+    screen.setCursor(10, 40);
+    screen.setTextColor(COLOR_RGB565_GREEN);
+    screen.printf("Zone: %s", relayLabels[selectedManualZoneIndex + 1]);
+    
+    screen.setCursor(10, 70);
+    screen.setTextColor(COLOR_RGB565_CYAN);
+    screen.println("Select Duration:");
+    
+    screen.setCursor(10, 100);
+    screen.setTextSize(3);
+    screen.setTextColor(COLOR_RGB565_WHITE);
+    screen.printf("%d minutes", selectedManualDuration);
+    
+    // Duration options for reference
+    screen.setTextSize(1);
+    screen.setTextColor(COLOR_RGB565_LGRAY);
+    screen.setCursor(10, 140);
+    screen.println("Common durations:");
+    screen.setCursor(10, 155);
+    screen.println("5, 10, 15, 20, 30, 45, 60 min");
+    screen.setCursor(10, 170);
+    screen.println("Range: 1-120 minutes");
+    
+    // Instructions
+    screen.setTextSize(1);
+    screen.setTextColor(COLOR_RGB565_YELLOW);
+    screen.setCursor(10, 200);
+    screen.println("Rotate to adjust duration");
+    screen.setCursor(10, 215);
+    screen.println("Press button to start zone");
+    screen.setCursor(10, 230);
+    screen.println("Long press to go back");
+    
+  } else {
+    // Zone selection mode
+    screen.setCursor(10, 40);
+    screen.setTextColor(COLOR_RGB565_RED);
+    screen.println("Select Zone:");
 
-  // List zones
-  for (int i = 0; i < ZONE_COUNT; i++) {
-    int yPos = 80 + i * 30;
-    uint16_t color = (i == selectedManualZoneIndex) ? COLOR_RGB565_WHITE : COLOR_RGB565_LGRAY;
-    screen.setTextColor(color);
-    screen.setCursor(10, yPos);
-    // zone i => relay i+1
-    screen.print(relayLabels[i+1]);
-    screen.print(": ");
-    screen.println(relayStates[i+1] ? "ON" : "OFF");
+    // List zones
+    for (int i = 0; i < ZONE_COUNT; i++) {
+      int yPos = 80 + i * 25;
+      uint16_t color = (i == selectedManualZoneIndex) ? COLOR_RGB565_WHITE : COLOR_RGB565_LGRAY;
+      screen.setTextColor(color);
+      screen.setCursor(10, yPos);
+      // zone i => relay i+1
+      screen.print(relayLabels[i+1]);
+      screen.print(": ");
+      screen.println(relayStates[i+1] ? "ON" : "OFF");
+    }
+    
+    // Instructions
+    screen.setTextSize(1);
+    screen.setTextColor(COLOR_RGB565_YELLOW);
+    screen.setCursor(10, 260);
+    screen.println("Rotate to select zone");
+    screen.setCursor(10, 275);
+    screen.println("Press button to set duration");
   }
 }
 
@@ -818,6 +904,15 @@ void startManualZone(int zoneIdx) {
   relayStates[PUMP_IDX] = true;
   digitalWrite(relayPins[PUMP_IDX], HIGH);
 
+  // Initialize timer variables for manual run with selected duration
+  currentRunningZone = zoneIdx;
+  zoneStartTime = millis();
+  zoneDuration = selectedManualDuration * 60000;  // Convert minutes to milliseconds
+  isTimedRun = true;
+  
+  // Reset selection state
+  selectingDuration = false;
+
   DEBUG_PRINTF("Zone %d and pump are now ACTIVE\n", zoneIdx);
   DEBUG_PRINTF("Free heap: %d bytes\n", ESP.getFreeHeap());
 
@@ -837,40 +932,59 @@ void drawRunningZoneMenu() {
   // Show current date/time
   drawDateTime(10, 40);
 
-  // Find which zone is currently running
-  int runningZone = -1;
-  for (int i = 1; i < NUM_RELAYS; i++) {
-    if (relayStates[i]) {
-      runningZone = i;
-      break;
-    }
-  }
+  // Calculate elapsed time
+  unsigned long elapsed = millis() - zoneStartTime;
+  unsigned long elapsedSeconds = elapsed / 1000;
+  unsigned long elapsedMinutes = elapsedSeconds / 60;
+  unsigned long remainingSeconds = elapsedSeconds % 60;
 
   // Display running zone information
   screen.setTextSize(2);
-  if (runningZone > 0) {
+  if (currentRunningZone > 0) {
     screen.setTextColor(COLOR_RGB565_GREEN);
     screen.setCursor(10, 80);
-    screen.printf("Active: %s", relayLabels[runningZone]);
+    screen.printf("Active: %s", relayLabels[currentRunningZone]);
+    
+    // Show elapsed time
+    screen.setCursor(10, 110);
+    screen.setTextColor(COLOR_RGB565_CYAN);
+    screen.printf("Running: %02lu:%02lu", elapsedMinutes, remainingSeconds);
     
     // Show pump status
-    screen.setCursor(10, 110);
+    screen.setCursor(10, 140);
     screen.setTextColor(relayStates[PUMP_IDX] ? COLOR_RGB565_GREEN : COLOR_RGB565_RED);
     screen.printf("Pump: %s", relayStates[PUMP_IDX] ? "ON" : "OFF");
+
+    // Show run type
+    screen.setTextSize(1);
+    screen.setCursor(10, 170);
+    screen.setTextColor(COLOR_RGB565_WHITE);
+    if (isTimedRun && zoneDuration > 0) {
+      unsigned long totalMinutes = zoneDuration / 60000;
+      unsigned long remainingTime = (zoneDuration - elapsed) / 1000;
+      unsigned long remMinutes = remainingTime / 60;
+      unsigned long remSeconds = remainingTime % 60;
+      screen.printf("Timed run: %lu min total", totalMinutes);
+      screen.setCursor(10, 185);
+      screen.setTextColor(COLOR_RGB565_YELLOW);
+      screen.printf("Time left: %02lu:%02lu", remMinutes, remSeconds);
+    } else {
+      screen.println("Manual run (indefinite)");
+    }
   } else {
     screen.setTextColor(COLOR_RGB565_RED);
     screen.setCursor(10, 80);
     screen.println("No Zone Active");
   }
 
-  // Show all zone status
+  // Show compact zone status
   screen.setTextSize(1);
   screen.setTextColor(COLOR_RGB565_WHITE);
-  screen.setCursor(10, 150);
-  screen.println("Zone Status:");
+  screen.setCursor(10, 210);
+  screen.println("All Zones:");
 
   for (int i = 1; i < NUM_RELAYS; i++) {
-    int yPos = 170 + (i-1) * 12;
+    int yPos = 225 + (i-1) * 10;
     screen.setCursor(10, yPos);
     
     // Highlight active zone
@@ -885,7 +999,7 @@ void drawRunningZoneMenu() {
 
   // Instructions
   screen.setTextColor(COLOR_RGB565_YELLOW);
-  screen.setCursor(10, 280);
+  screen.setCursor(10, 300);
   screen.println("Press button to stop zone");
 }
 
@@ -907,6 +1021,12 @@ void stopZone() {
   }
   relayStates[PUMP_IDX] = false;
   digitalWrite(relayPins[PUMP_IDX], LOW);
+  
+  // Reset timer variables
+  currentRunningZone = -1;
+  zoneStartTime = 0;
+  zoneDuration = 0;
+  isTimedRun = false;
   
   DEBUG_PRINTLN("All zones and pump are now OFF");
 }
