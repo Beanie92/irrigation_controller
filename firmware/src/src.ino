@@ -269,6 +269,7 @@ void updateSoftwareClock();
 
 // Manual Run
 void drawManualRunMenu();
+void drawRunningZoneMenu();
 void startManualZone(int zoneIdx);
 void stopZone();
 
@@ -666,7 +667,7 @@ void enterState(ProgramState newState) {
       break;
     case STATE_RUNNING_ZONE:
       DEBUG_PRINTLN("Entering running zone state");
-      // Possibly draw a "running zone" screen or countdown
+      drawRunningZoneMenu();
       break;
     case STATE_TEST_MODE:
       DEBUG_PRINTLN("Starting test mode");
@@ -822,6 +823,70 @@ void startManualZone(int zoneIdx) {
 
   // Move to "running zone" state (indefinite or timed, your choice)
   enterState(STATE_RUNNING_ZONE);
+}
+
+void drawRunningZoneMenu() {
+  screen.fillScreen(COLOR_RGB565_BLACK);
+
+  // Title
+  screen.setTextSize(2);
+  screen.setTextColor(COLOR_RGB565_YELLOW);
+  screen.setCursor(10, 10);
+  screen.println("Zone Running");
+
+  // Show current date/time
+  drawDateTime(10, 40);
+
+  // Find which zone is currently running
+  int runningZone = -1;
+  for (int i = 1; i < NUM_RELAYS; i++) {
+    if (relayStates[i]) {
+      runningZone = i;
+      break;
+    }
+  }
+
+  // Display running zone information
+  screen.setTextSize(2);
+  if (runningZone > 0) {
+    screen.setTextColor(COLOR_RGB565_GREEN);
+    screen.setCursor(10, 80);
+    screen.printf("Active: %s", relayLabels[runningZone]);
+    
+    // Show pump status
+    screen.setCursor(10, 110);
+    screen.setTextColor(relayStates[PUMP_IDX] ? COLOR_RGB565_GREEN : COLOR_RGB565_RED);
+    screen.printf("Pump: %s", relayStates[PUMP_IDX] ? "ON" : "OFF");
+  } else {
+    screen.setTextColor(COLOR_RGB565_RED);
+    screen.setCursor(10, 80);
+    screen.println("No Zone Active");
+  }
+
+  // Show all zone status
+  screen.setTextSize(1);
+  screen.setTextColor(COLOR_RGB565_WHITE);
+  screen.setCursor(10, 150);
+  screen.println("Zone Status:");
+
+  for (int i = 1; i < NUM_RELAYS; i++) {
+    int yPos = 170 + (i-1) * 12;
+    screen.setCursor(10, yPos);
+    
+    // Highlight active zone
+    if (relayStates[i]) {
+      screen.setTextColor(COLOR_RGB565_GREEN);
+    } else {
+      screen.setTextColor(COLOR_RGB565_LGRAY);
+    }
+    
+    screen.printf("%s: %s", relayLabels[i], relayStates[i] ? "ON" : "OFF");
+  }
+
+  // Instructions
+  screen.setTextColor(COLOR_RGB565_YELLOW);
+  screen.setCursor(10, 280);
+  screen.println("Press button to stop zone");
 }
 
 void stopZone() {
