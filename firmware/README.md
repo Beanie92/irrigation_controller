@@ -1,0 +1,177 @@
+# Irrigation Controller Firmware
+
+ESP32-C6 based irrigation controller with WiFi connectivity and NTP time synchronization.
+
+## Features
+
+- **WiFi Connectivity**: Automatic connection to saved WiFi networks
+- **NTP Time Synchronization**: Automatic time sync from internet time servers
+- **Manual Zone Control**: Control individual irrigation zones via rotary encoder interface
+- **Program Scheduling**: Three programmable irrigation schedules (A, B, C)
+- **TFT Display**: 240x320 color display with intuitive menu system
+- **Relay Control**: 8-channel relay control (1 pump + 7 zones)
+
+## Hardware Requirements
+
+- ESP32-C6 development board (DFRobot Beetle ESP32-C6)
+- ST7789 240x320 TFT display
+- KY-040 rotary encoder with button
+- 8-channel relay module
+- Power supply suitable for your relay/pump requirements
+
+## Pin Configuration
+
+### Display (ST7789)
+- DC: Pin 2
+- CS: Pin 6
+- RST: Pin 3
+
+### Rotary Encoder (KY-040)
+- CLK: Pin 4
+- DT: Pin 7
+- SW: Pin 16
+
+### Relays
+- Relay 0 (Pump): Pin 19
+- Relay 1 (Zone 1): Pin 20
+- Relay 2 (Zone 2): Pin 17
+- Relay 3 (Zone 3): Pin 18
+- Relay 4 (Zone 4): Pin 15
+- Relay 5 (Zone 5): Pin 21
+- Relay 6 (Zone 6): Pin 1
+- Relay 7 (Zone 7): Pin 14
+
+## WiFi Setup
+
+The system uses **WiFiManager** with a captive portal for easy WiFi configuration - **WiFi setup is completely optional!**
+
+### Optional WiFi Setup (User-Controlled)
+
+WiFi is now configured through the Settings menu - the system boots directly to the main menu without any WiFi delays.
+
+1. **Navigate to Settings** from the main menu using the rotary encoder
+2. **Select "WiFi Setup"** to start the configuration process
+3. **The device creates a hotspot**:
+   - **Network Name**: `IrrigationController`
+   - **Password**: `irrigation123`
+4. **Connect your phone/laptop** to the `IrrigationController` network
+5. **Open a web browser** - you'll be automatically redirected to the config page
+   - If not redirected, go to: `192.168.4.1`
+6. **Select your WiFi network** from the list and enter your password
+7. **Click Save** - the device will connect to your WiFi and sync time
+
+### Status Display
+
+The device display will show:
+- **"WiFi Setup - Connecting..."** when attempting connection
+- **"WiFi Setup Required"** with step-by-step instructions when captive portal is active
+- **"WiFi Connected!"** with network details when successful
+- **"WiFi Setup Timed Out"** if configuration takes too long (3 minutes)
+
+### Reconfiguring WiFi
+
+To change WiFi settings:
+1. **Reset WiFi credentials** by holding the rotary encoder button during startup
+2. Or use the Arduino IDE Serial Monitor to send reset commands
+3. The captive portal will automatically start again
+
+### Troubleshooting WiFi
+
+- **Portal not appearing**: Ensure you're connected to `IrrigationController` network
+- **Can't connect to portal**: Try browsing to `192.168.4.1` manually
+- **WiFi keeps failing**: Check 2.4GHz network (ESP32 doesn't support 5GHz)
+- **Timeout issues**: Portal times out after 3 minutes - restart device to try again
+
+## Time Configuration
+
+The system automatically synchronizes time with NTP servers when WiFi is connected:
+
+- **NTP Server**: pool.ntp.org
+- **Timezone**: GMT+2 (Botswana/South Africa)
+- **Sync Interval**: Every hour
+- **Fallback**: Software clock when WiFi unavailable
+
+To change timezone, modify these values in the code:
+```cpp
+const long gmtOffset_sec = 7200;     // GMT+2 (adjust as needed)
+const int daylightOffset_sec = 0;    // Daylight saving offset
+```
+
+## Menu System
+
+### Main Menu
+- **Manual Run**: Start individual zones manually
+- **Settings**: Access system configuration options
+- **Set Cycle Start**: Configure program start times
+- **Program A/B/C**: Configure automated irrigation programs
+
+### Settings Submenu
+- **WiFi Setup**: Launch captive portal for WiFi configuration
+- **Set Time Manually**: Configure date/time manually (when NTP unavailable)
+- **WiFi Reset**: Clear saved WiFi credentials
+- **System Info**: View hardware and network status
+- **Back to Main Menu**: Return to main menu
+
+### Navigation
+- **Rotate Encoder**: Navigate through options
+- **Press Button**: Select/confirm option
+- **Long Press**: Cancel/return to previous menu
+
+## Programming Irrigation Schedules
+
+Each program (A, B, C) can be configured with:
+- **Zone Durations**: Individual run times for each zone (0-120 minutes)
+- **Inter-zone Delay**: Pause between zones (0-30 minutes)
+- **Start Time**: When the program should begin
+- **Active Days**: Which days of the week to run
+
+## Troubleshooting
+
+### WiFi Connection Issues
+1. Check SSID and password are correct
+2. Ensure 2.4GHz network (ESP32 doesn't support 5GHz)
+3. Check signal strength in installation location
+4. Monitor serial output for connection status
+
+### Time Sync Issues
+1. Verify WiFi connection is working
+2. Check internet connectivity
+3. Firewall may be blocking NTP (port 123)
+4. Try different NTP server if needed
+
+### Display Issues
+1. Check all display connections
+2. Verify power supply voltage
+3. Check SPI pin assignments match your hardware
+
+## Development
+
+### Arduino IDE Setup
+1. Install ESP32 board package
+2. Select "ESP32C6 Dev Module" as board
+3. Install required libraries:
+   - **DFRobot_GDL** (for display) - Install via Library Manager
+   - **WiFiManager** by tzapu - Install via Library Manager
+   - **WiFi** (built-in ESP32 library)
+   - **Preferences** (built-in ESP32 library)
+   - **time.h** (built-in C library)
+
+### Serial Debug Output
+Enable debug output by setting:
+```cpp
+#define DEBUG_ENABLED true
+```
+
+Connect serial monitor at 115200 baud to see detailed system information.
+
+## Safety Notes
+
+- Always verify relay wiring before connecting pumps/valves
+- Use appropriate fuses and circuit protection
+- Test manual operation before setting up automated programs
+- Ensure adequate power supply for your specific hardware
+- Consider using contactors for high-power pumps
+
+## License
+
+This project is open source. Use and modify as needed for your irrigation requirements.
