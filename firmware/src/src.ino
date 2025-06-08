@@ -84,15 +84,17 @@ enum ProgramState {
   STATE_PROG_A,
   STATE_PROG_B,
   STATE_PROG_C,
-  STATE_RUNNING_ZONE
+  STATE_RUNNING_ZONE,
+  STATE_TEST_MODE
 };
 
 ProgramState currentState = STATE_MAIN_MENU;
 
 // Main Menu Items
-static const int MAIN_MENU_ITEMS = 6;
+static const int MAIN_MENU_ITEMS = 7;
 const char* mainMenuLabels[MAIN_MENU_ITEMS] = {
   "Manual Run",
+  "Test Mode",
   "Settings",
   "Set Cycle Start",
   "Program A",
@@ -114,6 +116,14 @@ int selectedSettingsMenuIndex = 0;
 
 // Manual Run zone index: 0..6 => zone = index+1
 int selectedManualZoneIndex = 0;
+
+// -----------------------------------------------------------------------------
+//                           Test Mode Variables
+// -----------------------------------------------------------------------------
+bool testModeActive = false;
+int currentTestRelay = 0;           // 0-7: 0=pump, 1-7=zones
+unsigned long testModeStartTime = 0;
+const unsigned long TEST_INTERVAL = 5000; // 5 seconds per relay
 
 // -----------------------------------------------------------------------------
 //                  Time-Keeping (Software Simulation)
@@ -283,6 +293,12 @@ void drawWiFiSetupMenu();
 void drawWiFiResetMenu();
 void drawSystemInfoMenu();
 
+// Test Mode functions
+void startTestMode();
+void updateTestMode();
+void drawTestModeMenu();
+void stopTestMode();
+
 // WiFi and NTP functions
 void initWiFi();
 void connectToWiFi();
@@ -359,6 +375,8 @@ void loop() {
   // Additional logic for running states if needed
   if (currentState == STATE_RUNNING_ZONE) {
     // e.g., check time-based zone run or cancellation
+  } else if (currentState == STATE_TEST_MODE && testModeActive) {
+    updateTestMode();
   }
 }
 
@@ -475,19 +493,22 @@ void handleButtonPress() {
             case 0: // Manual Run
               enterState(STATE_MANUAL_RUN);
               break;
-            case 1: // Settings
+            case 1: // Test Mode
+              enterState(STATE_TEST_MODE);
+              break;
+            case 2: // Settings
               enterState(STATE_SETTINGS);
               break;
-            case 2: // Set Cycle Start
+            case 3: // Set Cycle Start
               enterState(STATE_SET_CYCLE_START);
               break;
-            case 3: // Program A
+            case 4: // Program A
               enterState(STATE_PROG_A);
               break;
-            case 4: // Program B
+            case 5: // Program B
               enterState(STATE_PROG_B);
               break;
-            case 5: // Program C
+            case 6: // Program C
               enterState(STATE_PROG_C);
               break;
           }
@@ -550,6 +571,13 @@ void handleButtonPress() {
           // Pressing button => Cancel the running zone
           DEBUG_PRINTLN("Cancelling running zone");
           stopZone();
+          enterState(STATE_MAIN_MENU);
+          break;
+
+        case STATE_TEST_MODE:
+          // Pressing button => Cancel test mode
+          DEBUG_PRINTLN("Cancelling test mode");
+          stopTestMode();
           enterState(STATE_MAIN_MENU);
           break;
 
@@ -639,6 +667,10 @@ void enterState(ProgramState newState) {
     case STATE_RUNNING_ZONE:
       DEBUG_PRINTLN("Entering running zone state");
       // Possibly draw a "running zone" screen or countdown
+      break;
+    case STATE_TEST_MODE:
+      DEBUG_PRINTLN("Starting test mode");
+      startTestMode();
       break;
     default:
       DEBUG_PRINTF("Unknown state entered: %d\n", currentState);
@@ -1478,4 +1510,137 @@ void resetWiFiCredentials() {
   timeSync = false;
   
   DEBUG_PRINTLN("WiFi credentials cleared successfully");
+}
+
+// -----------------------------------------------------------------------------
+//                           TEST MODE FUNCTIONS
+// -----------------------------------------------------------------------------
+void startTestMode() {
+  DEBUG_PRINTLN("=== STARTING TEST MODE ===");
+  
+  // Initialize test mode variables
+  testModeActive = true;
+  currentTestRelay = 0;  // Start with pump (relay 0)
+  testModeStartTime = millis();
+  
+  // Turn off all relays first
+  stopZone();
+  
+  // Turn on the first relay (pump)
+  DEBUG_PRINTF("Turning on relay %d (%s)\n", currentTestRelay, relayLabels[currentTestRelay]);
+  relayStates[currentTestRelay] = true;
+  digitalWrite(relayPins[currentTestRelay], HIGH);
+  
+  // Draw initial test mode screen
+  drawTestModeMenu();
+  
+  DEBUG_PRINTLN("Test mode initialized - pump is now ON");
+}
+
+void updateTestMode() {
+  if (!testModeActive) return;
+  
+  unsigned long currentTime = millis();
+  unsigned long elapsed = currentTime - testModeStartTime;
+  
+  // Check if it's time to switch to the next relay
+  if (elapsed >= TEST_INTERVAL) {
+    // Turn off current relay
+    if (currentTestRelay < NUM_RELAYS) {
+      DEBUG_PRINTF("Turning off relay %d (%s)\n", currentTestRelay, relayLabels[currentTestRelay]);
+      relayStates[currentTestRelay] = false;
+      digitalWrite(relayPins[currentTestRelay], LOW);
+    }
+    
+    // Move to next relay
+    currentTestRelay++;
+    
+    // Check if we've tested all relays
+    if (currentTestRelay >= NUM_RELAYS) {
+      DEBUG_PRINTLN("Test mode complete - all relays tested");
+      stopTestMode();
+      enterState(STATE_MAIN_MENU);
+      return;
+    }
+    
+    // Turn on next relay
+    DEBUG_PRINTF("Turning on relay %d (%s)\n", currentTestRelay, relayLabels[currentTestRelay]);
+    relayStates[currentTestRelay] = true;
+    digitalWrite(relayPins[currentTestRelay], HIGH);
+    
+    // Reset timer for next interval
+    testModeStartTime = currentTime;
+    
+    // Update display
+    drawTestModeMenu();
+  }
+}
+
+void drawTestModeMenu() {
+  screen.fillScreen(COLOR_RGB565_BLACK);
+  
+  screen.setTextSize(2);
+  screen.setTextColor(COLOR_RGB565_YELLOW);
+  screen.setCursor(10, 10);
+  screen.println("Test Mode");
+  
+  // Show current status
+  screen.setTextSize(2);
+  screen.setTextColor(COLOR_RGB565_WHITE);
+  screen.setCursor(10, 50);
+  
+  if (currentTestRelay < NUM_RELAYS) {
+    screen.printf("Testing: %s", relayLabels[currentTestRelay]);
+    
+    // Show countdown
+    unsigned long elapsed = millis() - testModeStartTime;
+    unsigned long remaining = (TEST_INTERVAL - elapsed) / 1000;
+    
+    screen.setCursor(10, 80);
+    screen.setTextColor(COLOR_RGB565_GREEN);
+    screen.printf("Time left: %lu sec", remaining);
+    
+    // Show progress
+    screen.setCursor(10, 110);
+    screen.setTextColor(COLOR_RGB565_CYAN);
+    screen.printf("Relay %d of %d", currentTestRelay + 1, NUM_RELAYS);
+  } else {
+    screen.println("Test Complete!");
+  }
+  
+  // Show all relay states
+  screen.setTextSize(1);
+  screen.setTextColor(COLOR_RGB565_WHITE);
+  screen.setCursor(10, 150);
+  screen.println("Relay Status:");
+  
+  for (int i = 0; i < NUM_RELAYS; i++) {
+    int yPos = 170 + i * 12;
+    screen.setCursor(10, yPos);
+    
+    // Highlight current relay
+    if (i == currentTestRelay && testModeActive) {
+      screen.setTextColor(COLOR_RGB565_GREEN);
+    } else {
+      screen.setTextColor(COLOR_RGB565_LGRAY);
+    }
+    
+    screen.printf("%s: %s", relayLabels[i], relayStates[i] ? "ON" : "OFF");
+  }
+  
+  // Instructions
+  screen.setTextColor(COLOR_RGB565_YELLOW);
+  screen.setCursor(10, 280);
+  screen.println("Press button to cancel test");
+}
+
+void stopTestMode() {
+  DEBUG_PRINTLN("=== STOPPING TEST MODE ===");
+  
+  testModeActive = false;
+  
+  // Turn off all relays
+  stopZone();
+  
+  DEBUG_PRINTLN("Test mode stopped - all relays OFF");
 }
