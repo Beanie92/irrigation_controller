@@ -28,6 +28,33 @@ typedef enum {
     EVERYDAY  = 0b01111111  // All days
 } DayOfWeek;
 
+// Number of irrigation zones (excluding the pump)
+#define ZONE_COUNT 7
+
+// Time structure for cycle start times
+typedef struct {
+    uint8_t hour;    // 0-23
+    uint8_t minute;  // 0-59
+} TimeOfDay;
+
+// Main cycle configuration structure
+struct CycleConfig {
+    bool enabled;           // Whether this cycle is active
+    TimeOfDay startTime;    // When to start the cycle
+    uint8_t daysActive;     // Bitfield using DayOfWeek values
+    uint8_t interZoneDelay; // Minutes to wait between zones
+    uint16_t zoneDurations[ZONE_COUNT]; // Minutes per zone
+    char name[16];          // Optional: Cycle name/description
+};
+
+// Enum for tracking the type of active operation
+typedef enum {
+  OP_NONE,
+  OP_MANUAL_ZONE,
+  OP_MANUAL_CYCLE,
+  OP_SCHEDULED_CYCLE
+} ActiveOperationType;
+
 
 // -----------------------------------------------------------------------------
 //                           UI Components

@@ -6,10 +6,11 @@ ESP32-C6 based irrigation controller with WiFi connectivity and NTP time synchro
 
 - **WiFi Connectivity**: Automatic connection to saved WiFi networks
 - **NTP Time Synchronization**: Automatic time sync from internet time servers
-- **Manual Zone Control**: Control individual irrigation zones via rotary encoder interface
-- **Cycle Scheduling**: Three programmable irrigation schedules (A, B, C)
-- **TFT Display**: 240x320 color display with intuitive menu system
-- **Relay Control**: 8-channel relay control (1 pump + 7 zones)
+- **Web Server Interface**: Configure settings, view status, and control zones/cycles via a web browser.
+- **Manual Zone Control**: Control individual irrigation zones via rotary encoder interface or web UI.
+- **Cycle Scheduling**: Three programmable irrigation schedules (A, B, C) configurable via device UI or web UI.
+- **TFT Display**: 240x320 color display with intuitive menu system.
+- **Relay Control**: 8-channel relay control (1 pump + 7 zones).
 
 ## Hardware Requirements
 
@@ -71,9 +72,8 @@ The device display will show:
 ### Reconfiguring WiFi
 
 To change WiFi settings:
-1. **Reset WiFi credentials** by holding the rotary encoder button during startup
-2. Or use the Arduino IDE Serial Monitor to send reset commands
-3. The captive portal will automatically start again
+1. Use the "WiFi Reset" option in the Settings menu on the device.
+2. The captive portal will automatically start again on the next "WiFi Setup" attempt or if the device cannot connect to a previously saved network.
 
 ### Troubleshooting WiFi
 
@@ -96,6 +96,23 @@ To change timezone, modify these values in the code:
 const long gmtOffset_sec = 7200;     // GMT+2 (adjust as needed)
 const int daylightOffset_sec = 0;    // Daylight saving offset
 ```
+
+## Web Server Interface
+
+Once the ESP32 is connected to your WiFi network, you can access the web interface by navigating to its IP address in a web browser. The IP address is displayed on the device's screen after a successful WiFi connection and also printed to the Serial Monitor.
+
+The web interface allows you to:
+- View current system time and relay (zone) statuses.
+- Manually set the system date and time.
+- Manually start individual zones for a specified duration.
+- Stop all currently running irrigation activity.
+- View and configure all three irrigation cycles (A, B, C):
+    - Enable/disable cycles.
+    - Set start time (hour, minute).
+    - Set inter-zone delay.
+    - Select active days of the week.
+    - Configure run durations for each of the 7 zones.
+- Manually start a configured cycle.
 
 ## Menu System
 
@@ -150,8 +167,10 @@ Each cycle (A, B, C) can be configured with:
 1. Install ESP32 board package
 2. Select "ESP32C6 Dev Module" as board
 3. Install required libraries:
-   - **DFRobot_GDL** (for display) - Install via Library Manager
-   - **WiFiManager** by tzapu - Install via Library Manager
+   - **DFRobot_GDL** (for display) - Note: This project now uses a custom `st7789_dma_driver` instead of DFRobot_GDL. Ensure `Adafruit_GFX` is available as a dependency if not already included by the ESP32 core.
+   - **WiFiManager** by tzapu - Install via Library Manager.
+   - **WebServer** (built-in ESP32 library, part of the ESP32 core - no separate installation needed if ESP32 core is installed).
+   - **ArduinoJson** - Install via Library Manager (by Benoit Blanchon).
    - **WiFi** (built-in ESP32 library)
    - **Preferences** (built-in ESP32 library)
    - **time.h** (built-in C library)

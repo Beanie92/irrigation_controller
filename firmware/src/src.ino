@@ -6,6 +6,7 @@
 #include <WiFiManager.h>
 #include <time.h>
 #include <Preferences.h>
+#include "web_server.h" // Include the web server header
 
 // -----------------------------------------------------------------------------
 //                           DEBUG CONFIGURATION
@@ -39,14 +40,14 @@ const unsigned long buttonDebounce = 200; // milliseconds
 // -----------------------------------------------------------------------------
 //                        Relay Pins / Configuration
 // -----------------------------------------------------------------------------
-static const int NUM_RELAYS = 8;
+const int NUM_RELAYS = 8; // Made non-static for web_server.h extern
 // Relay 0 is dedicated to the borehole pump;
 // Relays 1..7 are the irrigation zones.
 static const int relayPins[NUM_RELAYS] = {19, 20, 17, 18, 15, 21, 1, 14}; 
 bool relayStates[NUM_RELAYS] = {false, false, false, false, false, false, false, false};
 
 static const int PUMP_IDX = 0;   // borehole pump
-static const int ZONE_COUNT = 7; // zones 1..7
+// ZONE_COUNT is now defined in ui_components.h
 
 // -----------------------------------------------------------------------------
 //                           Display Pins / Driver
@@ -88,12 +89,7 @@ volatile bool uiDirty = true; // Flag to trigger UI redraw
 // -----------------------------------------------------------------------------
 //                           Menu and Cycle States
 // -----------------------------------------------------------------------------
-enum ActiveOperationType {
-  OP_NONE,
-  OP_MANUAL_ZONE,
-  OP_MANUAL_CYCLE,
-  OP_SCHEDULED_CYCLE
-};
+// ActiveOperationType is now defined in ui_components.h
 
 enum UIState {
   STATE_MAIN_MENU,
@@ -104,7 +100,7 @@ enum UIState {
   STATE_CYCLE_C_MENU,
   STATE_SETTINGS,
   STATE_SET_SYSTEM_TIME,
-  STATE_WIFI_SETUP,
+  STATE_WIFI_SETUP_LAUNCHER, // Renamed from STATE_WIFI_SETUP
   STATE_WIFI_RESET,
   STATE_SYSTEM_INFO,
   STATE_PROG_A,
@@ -160,9 +156,19 @@ const char* settingsMenuLabels[SETTINGS_MENU_ITEMS] = {
 int selectedSettingsMenuIndex = 0;
 ScrollableList settingsMenuScrollList;
 
+// WiFi Setup Launcher Menu Items
+static const int WIFI_SETUP_LAUNCHER_MENU_ITEMS = 2;
+const char* wifiSetupLauncherMenuLabels[WIFI_SETUP_LAUNCHER_MENU_ITEMS] = {
+  "Start WiFi Portal",
+  "Back"
+};
+int selectedWiFiSetupLauncherIndex = 0;
+ScrollableList wifiSetupLauncherScrollList;
+
 // Manual Run zone index: 0..6 => zone = index+1
 int selectedManualZoneIndex = 0;
-int selectedManualDuration = 5;  // Default 5 minutes
+// Made non-static to be accessible from web_server.cpp
+int selectedManualDuration = 5;  // Default 5 minutes 
 bool selectingDuration = false;  // Whether we're selecting duration or zone
 ScrollableList manualRunScrollList;
 
@@ -226,21 +232,7 @@ void incrementOneSecond() {
 // -----------------------------------------------------------------------------
 //                 Cycle Config
 // -----------------------------------------------------------------------------
-// Time structure (could use instead of SystemDateTime for start time)
-typedef struct {
-    uint8_t hour;    // 0-23
-    uint8_t minute;  // 0-59
-} TimeOfDay;
-
-// Main cycle configuration structure
-struct CycleConfig {
-    bool enabled;           // Whether this cycle is active
-    TimeOfDay startTime;    // When to start the cycle
-    uint8_t daysActive;     // Bitfield using DayOfWeek values
-    uint8_t interZoneDelay; // Minutes to wait between zones
-    uint16_t zoneDurations[ZONE_COUNT]; // Minutes per zone (renamed from zoneRunTimes)
-    char name[16];          // Optional: Cycle name/description
-};
+// TimeOfDay and CycleConfig structs are now defined in ui_components.h
 
 CycleConfig cycleA = {
     .enabled = true,
@@ -268,7 +260,7 @@ CycleConfig cycleC = {
 };
 
 CycleConfig* cycles[] = {&cycleA, &cycleB, &cycleC};
-static const int NUM_CYCLES = 3;
+const int NUM_CYCLES = 3; // Made non-static for web_server.h extern
 
 // -----------------------------------------------------------------------------
 //                Sub-indexes and helpers for editing fields
@@ -348,7 +340,7 @@ void drawCycleRunningMenu();
 void drawSettingsMenu();
 void drawWiFiResetMenu();
 void drawSystemInfoMenu();
-void drawWiFiSetupMenu();
+void drawWiFiSetupLauncherMenu(); // Renamed from drawWiFiSetupMenu
 
 // Test Mode functions
 void startTestMode();
@@ -363,7 +355,7 @@ void syncTimeWithNTP();
 void updateTimeFromNTP();
 void updateSystemTimeFromNTP();
 void resetWiFiCredentials();
-void startWiFiSetup();
+void executeWiFiPortalSetup(); // Renamed from startWiFiSetup
 
 // -----------------------------------------------------------------------------
 //                                     SETUP
@@ -417,6 +409,14 @@ void setup() {
   // Start in main menu (WiFi setup is now optional via Settings menu)
   DEBUG_PRINTLN("Entering main menu state...");
   navigateTo(STATE_MAIN_MENU);
+
+  // Initialize WiFi and Web Server if enabled/configured
+  // For now, we assume WiFiManager handles connection.
+  // Web server should start after a successful connection.
+  // The initWiFi() function already attempts to connect.
+  // We'll call initWebServer() from within connectToWiFi() after success.
+  // So, no direct call to initWebServer() here, but ensure connectToWiFi() does it.
+
   DEBUG_PRINTLN("=== STARTUP COMPLETE ===");
 }
 
@@ -442,7 +442,7 @@ void render() {
     case STATE_RUNNING_ZONE:    drawRunningZoneMenu(); break;
     case STATE_CYCLE_RUNNING:   drawCycleRunningMenu(); break;
     case STATE_TEST_MODE:       drawTestModeMenu(); break;
-    case STATE_WIFI_SETUP:      drawWiFiSetupMenu(); break;
+    case STATE_WIFI_SETUP_LAUNCHER: drawWiFiSetupLauncherMenu(); break;
     case STATE_WIFI_RESET:      drawWiFiResetMenu(); break;
     case STATE_SYSTEM_INFO:     drawSystemInfoMenu(); break;
     default:
@@ -485,6 +485,11 @@ void loop() {
 
   // Render the UI if needed
   render();
+
+  // Handle web server client requests
+  if (wifiConnected) { // Only handle if WiFi is connected
+    server.handleClient();
+  }
 
   // Check for scheduled cycles if no other operation is active
   if (currentOperation == OP_NONE) {
@@ -601,6 +606,10 @@ void handleEncoderMovement() {
       handleScrollableListInput(settingsMenuScrollList, diff);
       break;
 
+    case STATE_WIFI_SETUP_LAUNCHER:
+      handleScrollableListInput(wifiSetupLauncherScrollList, diff);
+      break;
+
     case STATE_SET_SYSTEM_TIME:
       handleSetSystemTimeEncoder(diff);
       break;
@@ -708,11 +717,19 @@ void handleButtonPress() {
             goBack();
           } else {
             switch (selectedSettingsMenuIndex) {
-              case 0: navigateTo(STATE_WIFI_SETUP); break;
+              case 0: navigateTo(STATE_WIFI_SETUP_LAUNCHER); break;
               case 1: navigateTo(STATE_SET_SYSTEM_TIME); break;
               case 2: navigateTo(STATE_WIFI_RESET); break;
               case 3: navigateTo(STATE_SYSTEM_INFO); break;
             }
+          }
+          break;
+        
+        case STATE_WIFI_SETUP_LAUNCHER:
+          if (selectedWiFiSetupLauncherIndex == 0) { // "Start WiFi Portal"
+            executeWiFiPortalSetup();
+          } else { // "Back"
+            goBack();
           }
           break;
 
@@ -789,7 +806,7 @@ void goBack() {
 void navigateTo(UIState newState, bool isNavigatingBack) {
   const char* stateNames[] = {
     "MAIN_MENU", "MANUAL_RUN", "CYCLES_MENU", "CYCLE_A_MENU", "CYCLE_B_MENU", "CYCLE_C_MENU",
-    "SETTINGS", "SET_SYSTEM_TIME", "WIFI_SETUP", "WIFI_RESET", "SYSTEM_INFO",
+    "SETTINGS", "SET_SYSTEM_TIME", "WIFI_SETUP_LAUNCHER", "WIFI_RESET", "SYSTEM_INFO",
     "PROG_A", "PROG_B", "PROG_C", "RUNNING_ZONE", "CYCLE_RUNNING", "TEST_MODE"
   };
   
@@ -908,9 +925,16 @@ void navigateTo(UIState newState, bool isNavigatingBack) {
       settingsMenuScrollList.num_items = SETTINGS_MENU_ITEMS;
       settingsMenuScrollList.selected_index_ptr = &selectedSettingsMenuIndex;
       settingsMenuScrollList.x = 0;
-      settingsMenuScrollList.y = 50;
+      // Adjusted Y position based on content in drawSettingsMenu
+      // WiFi (2 lines if connected, 2 if not) + Time (1 line) + Spacing + Separator line
+      // Approx: 10 (start) + 12 (wifi line1) + 12 (wifi line2/ip) + 15 (spacing) + 12 (time) + 15 (spacing) + 1 (separator) + 5 (padding) = ~72
+      // Let's use a calculated yPos from drawSettingsMenu or a fixed offset that accounts for the max height of the top text.
+      // For simplicity, using a fixed offset that should be sufficient.
+      // Original y was 50. We added IP (1 line) and adjusted spacing.
+      // New y should be around 10 (start) + 12 (wifi name) + 12 (ip) + 15 (space) + 12 (time) + 15 (space) + 1 (line) + 5 (padding) = 72
+      settingsMenuScrollList.y = 75; // Adjusted to provide enough space for the text above
       settingsMenuScrollList.width = 320;
-      settingsMenuScrollList.height = 240 - 50;
+      settingsMenuScrollList.height = 240 - settingsMenuScrollList.y; // Dynamically adjust height
       settingsMenuScrollList.item_text_size = 2;
       settingsMenuScrollList.item_text_color = COLOR_RGB565_LGRAY;
       settingsMenuScrollList.selected_item_text_color = COLOR_RGB565_WHITE;
@@ -942,9 +966,26 @@ void navigateTo(UIState newState, bool isNavigatingBack) {
       setTimeScrollList.show_back_button = true;
       setupScrollableListMetrics(setTimeScrollList, canvas);
       break;
-    case STATE_WIFI_SETUP:
-      DEBUG_PRINTLN("Starting WiFi setup");
-      startWiFiSetup();
+    case STATE_WIFI_SETUP_LAUNCHER:
+      selectedWiFiSetupLauncherIndex = 0;
+      wifiSetupLauncherScrollList.items = wifiSetupLauncherMenuLabels;
+      wifiSetupLauncherScrollList.num_items = WIFI_SETUP_LAUNCHER_MENU_ITEMS;
+      wifiSetupLauncherScrollList.selected_index_ptr = &selectedWiFiSetupLauncherIndex;
+      wifiSetupLauncherScrollList.x = 0;
+      wifiSetupLauncherScrollList.y = 70;
+      wifiSetupLauncherScrollList.width = 320;
+      wifiSetupLauncherScrollList.height = 240 - 70;
+      wifiSetupLauncherScrollList.item_text_size = 2;
+      wifiSetupLauncherScrollList.item_text_color = COLOR_RGB565_LGRAY;
+      wifiSetupLauncherScrollList.selected_item_text_color = COLOR_RGB565_WHITE;
+      wifiSetupLauncherScrollList.selected_item_bg_color = COLOR_RGB565_BLUE;
+      wifiSetupLauncherScrollList.list_bg_color = COLOR_RGB565_BLACK;
+      wifiSetupLauncherScrollList.title = "WiFi Setup";
+      wifiSetupLauncherScrollList.title_text_size = 2;
+      wifiSetupLauncherScrollList.title_text_color = COLOR_RGB565_YELLOW;
+      wifiSetupLauncherScrollList.show_back_button = false; // "Back" is an explicit item
+      setupScrollableListMetrics(wifiSetupLauncherScrollList, canvas);
+      DEBUG_PRINTLN("Entering WiFi Setup Launcher");
       break;
     case STATE_WIFI_RESET:
       DEBUG_PRINTLN("Resetting WiFi credentials");
@@ -1820,24 +1861,28 @@ void connectToWiFi() {
     canvas.setCursor(10, 90);
     canvas.println("Syncing time...");
     
-    // Initialize NTP
-    syncTimeWithNTP();
-    
-    // Show final status
-    canvas.setCursor(10, 110);
-    if (timeSync) {
-      canvas.setTextColor(COLOR_RGB565_GREEN);
-      canvas.println("Time sync: SUCCESS");
-    } else {
-      canvas.setTextColor(COLOR_RGB565_YELLOW);
-      canvas.println("Time sync: FAILED");
-    }
-    st7789_push_canvas(canvas.getBuffer(), 320, 240); // Use new driver
-    delay(2000);
+  // Initialize NTP
+  syncTimeWithNTP();
+  
+  // Show final status
+  canvas.setCursor(10, 110);
+  if (timeSync) {
+    canvas.setTextColor(COLOR_RGB565_GREEN);
+    canvas.println("Time sync: SUCCESS");
   } else {
-    wifiConnected = false;
-    DEBUG_PRINTLN("WiFi connection failed");
+    canvas.setTextColor(COLOR_RGB565_YELLOW);
+    canvas.println("Time sync: FAILED");
   }
+
+  // Initialize Web Server
+  initWebServer(); // Call this after WiFi is confirmed connected.
+
+  st7789_push_canvas(canvas.getBuffer(), 320, 240); // Use new driver
+  delay(2000);
+} else {
+  wifiConnected = false;
+  DEBUG_PRINTLN("WiFi connection failed");
+}
 }
 
 void syncTimeWithNTP() {
@@ -1904,16 +1949,27 @@ void drawSettingsMenu() {
   
   // --- Draw the static status information at the top ---
   canvas.setTextSize(1);
-  canvas.setCursor(10, 10);
+  int yPos = 10; // Starting Y position for status text
+
+  // WiFi Status & IP Address
+  canvas.setCursor(10, yPos);
   if (wifiConnected) {
     canvas.setTextColor(COLOR_RGB565_GREEN);
-    canvas.printf("WiFi: Connected (%s)", WiFi.SSID().c_str());
+    canvas.printf("WiFi: %s", WiFi.SSID().c_str());
+    yPos += 12; // Move down for next line
+    canvas.setCursor(10, yPos);
+    canvas.printf("IP: %s", WiFi.localIP().toString().c_str());
   } else {
     canvas.setTextColor(COLOR_RGB565_RED);
     canvas.println("WiFi: Not Connected");
+    yPos += 12; // Move down for next line
+    canvas.setCursor(10, yPos);
+    canvas.println("IP: ---.---.---.---");
   }
+  yPos += 15; // Add a bit more space before Time status
 
-  canvas.setCursor(10, 25);
+  // Time Sync Status
+  canvas.setCursor(10, yPos);
   if (timeSync) {
     canvas.setTextColor(COLOR_RGB565_GREEN);
     canvas.println("Time: NTP Synced");
@@ -1921,19 +1977,28 @@ void drawSettingsMenu() {
     canvas.setTextColor(COLOR_RGB565_YELLOW);
     canvas.println("Time: Manual/Software Clock");
   }
+  yPos += 15; // Space before separator line
   
   // Draw a separator line
-  canvas.drawLine(0, 45, 320, 45, COLOR_RGB565_LGRAY);
+  canvas.drawLine(0, yPos, 320, yPos, COLOR_RGB565_LGRAY);
+  
+  // Adjust the Y position of the scrollable list based on the new yPos
+  // This will be done in the navigateTo function where the list is configured.
+  // For now, we just ensure the drawing function itself is correct.
+  // The actual y position for drawing the list items is handled by drawScrollableList.
 
   // --- Draw the scrollable list for the settings items ---
+  // The y position of the list itself (settingsMenuScrollList.y) will be set in navigateTo
   drawScrollableList(canvas, settingsMenuScrollList, true);
 }
 
-void drawWiFiSetupMenu() {
-    // This function is intentionally left blank.
+void drawWiFiSetupLauncherMenu() { // Renamed from drawWiFiSetupMenu
+  canvas.fillScreen(COLOR_RGB565_BLACK);
+  // Additional info can be drawn here if needed, above or below the list
+  drawScrollableList(canvas, wifiSetupLauncherScrollList, true);
 }
 
-void startWiFiSetup() {
+void executeWiFiPortalSetup() { // Renamed from startWiFiSetup
   canvas.fillScreen(COLOR_RGB565_BLACK);
   canvas.setTextSize(2);
   canvas.setTextColor(COLOR_RGB565_YELLOW);
