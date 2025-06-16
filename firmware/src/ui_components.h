@@ -8,9 +8,11 @@
 // -----------------------------------------------------------------------------
 struct ScrollableList {
     // Data Source
-    const char** items;           // Array of strings for list items
+    const char** items;           // Array of strings for list items (for simple lists)
+    void* data_source;            // Generic pointer to an array of data (e.g., int[], ProgramConfig[])
     int num_items;                // Total number of items in the list
     int* selected_index_ptr;      // Pointer to the external variable holding the current selection
+    const char* format_string;    // Optional format string for displaying items (e.g., "Zone %d: %d min")
 
     // Display Properties
     int x, y, width, height;      // Bounding box for the entire component on screen

@@ -69,7 +69,16 @@ void drawScrollableList(DFRobot_ST7789_240x320_HW_SPI& screen, ScrollableList& l
             screen.setTextColor(list.item_text_color);
         }
         screen.setCursor(list.x + 10, yPos + 2); // Small padding from top of item row
-        screen.println(list.items[current_item_index]);
+        
+        // Render item text
+        if (list.format_string != nullptr && list.data_source != nullptr) {
+            char buffer[50];
+            uint16_t* durations = static_cast<uint16_t*>(list.data_source);
+            sprintf(buffer, list.format_string, current_item_index + 1, durations[current_item_index]);
+            screen.println(buffer);
+        } else {
+            screen.println(list.items[current_item_index]);
+        }
     }
 
     // Draw scroll indicators if not all items are visible

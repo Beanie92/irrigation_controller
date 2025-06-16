@@ -271,7 +271,8 @@ static const int NUM_PROGRAMS = 3;
 //                Sub-indexes and helpers for editing fields
 // -----------------------------------------------------------------------------
 static int timeEditFieldIndex = 0;    // 0=year,1=month,2=day,3=hour,4=minute,5=second
-static int programEditFieldIndex = 0; // 0=enabled, 1=hour, 2=minute, 3-9=days, 10-16=zone durations, 17=interZoneDelay
+static int programEditFieldIndex = 0; // 0=enabled, 1=hour, 2=minute, 3=interZoneDelay, 4-10=days, 11-17=zone durations
+static int zoneEditScrollOffset = 0; // For scrolling through zones in program config
 
 // Ranges for system time fields (simple example)
 #define MIN_YEAR  2020
@@ -297,6 +298,7 @@ const char* WIFI_PASS_KEY = "wifi_pass";
 
 // Global instance for main menu
 ScrollableList mainMenuScrollList;
+ScrollableList programZonesScrollList; // For zone durations in program config
 
 // -----------------------------------------------------------------------------
 //                           Forward Declarations
@@ -833,19 +835,41 @@ void enterState(ProgramState newState) {
       drawSystemInfoMenu();
       break;
     case STATE_PROG_A:
-      programEditFieldIndex = 0; // Reset field index for program config
-      DEBUG_PRINTLN("Entering Program A configuration");
-      drawProgramConfigMenu("Program A", programA);
-      break;
     case STATE_PROG_B:
-      programEditFieldIndex = 0; // Reset field index for program config
-      DEBUG_PRINTLN("Entering Program B configuration");
-      drawProgramConfigMenu("Program B", programB);
-      break;
     case STATE_PROG_C:
-      programEditFieldIndex = 0; // Reset field index for program config
-      DEBUG_PRINTLN("Entering Program C configuration");
-      drawProgramConfigMenu("Program C", programC);
+      {
+        programEditFieldIndex = 0;
+        static int selectedZoneIndex = 0; // Must be static to persist
+        selectedZoneIndex = 0;
+
+        ProgramConfig* currentProg;
+        const char* progLabel;
+        if (newState == STATE_PROG_A) { currentProg = &programA; progLabel = "Program A"; }
+        else if (newState == STATE_PROG_B) { currentProg = &programB; progLabel = "Program B"; }
+        else { currentProg = &programC; progLabel = "Program C"; }
+
+        programZonesScrollList.data_source = currentProg->zoneDurations;
+        programZonesScrollList.num_items = ZONE_COUNT;
+        programZonesScrollList.selected_index_ptr = &selectedZoneIndex;
+        programZonesScrollList.format_string = "Zone %d: %d min";
+        programZonesScrollList.x = 0;
+        programZonesScrollList.y = 150;
+        programZonesScrollList.width = 320;
+        programZonesScrollList.height = 95;
+        programZonesScrollList.item_text_size = 2;
+        programZonesScrollList.item_text_color = COLOR_RGB565_LGRAY;
+        programZonesScrollList.selected_item_text_color = COLOR_RGB565_WHITE;
+        programZonesScrollList.selected_item_bg_color = COLOR_RGB565_BLUE;
+        programZonesScrollList.list_bg_color = COLOR_RGB565_BLACK;
+        programZonesScrollList.title = "Zone Durations (min)";
+        programZonesScrollList.title_text_size = 2;
+        programZonesScrollList.title_text_color = COLOR_RGB565_YELLOW;
+        
+        setupScrollableListMetrics(programZonesScrollList, screen);
+        
+        DEBUG_PRINTF("Entering %s configuration\n", progLabel);
+        drawProgramConfigMenu(progLabel, *currentProg);
+      }
       break;
     case STATE_RUNNING_ZONE:
       DEBUG_PRINTLN("Entering running zone state");
@@ -1350,116 +1374,127 @@ void drawProgramConfigMenu(const char* label, ProgramConfig& cfg) {
   screen.print(label);
   screen.println(" Configuration");
 
+  // --- Draw non-scrolling fields ---
   screen.setTextSize(2);
-  screen.setTextColor(COLOR_RGB565_WHITE);
+  uint16_t color;
 
   // Field 0: Enabled
-  uint16_t color = (programEditFieldIndex == 0) ? COLOR_RGB565_WHITE : COLOR_RGB565_LGRAY;
+  color = (programEditFieldIndex == 0) ? COLOR_RGB565_WHITE : COLOR_RGB565_LGRAY;
   screen.setTextColor(color);
-  screen.setCursor(10, 50);
+  screen.setCursor(10, 40);
   screen.printf("Enabled: %s", cfg.enabled ? "YES" : "NO");
 
-  // Field 1: Start Hour
-  color = (programEditFieldIndex == 1) ? COLOR_RGB565_WHITE : COLOR_RGB565_LGRAY;
+  // Field 1 & 2: Start Time
+  color = (programEditFieldIndex >= 1 && programEditFieldIndex <= 2) ? COLOR_RGB565_WHITE : COLOR_RGB565_LGRAY;
   screen.setTextColor(color);
-  screen.setCursor(10, 80);
+  screen.setCursor(10, 65);
   screen.printf("Start Time: %02d:%02d", cfg.startTime.hour, cfg.startTime.minute);
 
-  // Field 2: Start Minute (handled by same line as hour, but separate edit field)
+  // Field 3: Inter-Zone Delay
+  color = (programEditFieldIndex == 3) ? COLOR_RGB565_WHITE : COLOR_RGB565_LGRAY;
+  screen.setTextColor(color);
+  screen.setCursor(10, 90);
+  screen.printf("Inter-Zone Delay: %d min", cfg.interZoneDelay);
 
-  // Fields 3-9: Days Active
+  // Fields 4-10: Days Active
   screen.setTextSize(1);
-  screen.setCursor(10, 110);
+  screen.setCursor(10, 115);
   screen.setTextColor(COLOR_RGB565_YELLOW);
-  screen.println("Days:");
+  screen.println("Days Active:");
   const char* dayLabels[] = {"Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"};
   for (int i = 0; i < 7; i++) {
-    int xPos = 10 + i * 40;
-    color = (programEditFieldIndex == (3 + i)) ? COLOR_RGB565_WHITE : COLOR_RGB565_LGRAY;
+    int xPos = 10 + i * 45;
+    color = (programEditFieldIndex == (4 + i)) ? COLOR_RGB565_WHITE : COLOR_RGB565_LGRAY;
     screen.setTextColor(color);
     screen.setCursor(xPos, 130);
     screen.printf("%s %c", dayLabels[i], (cfg.daysActive & (1 << i)) ? '*' : ' ');
   }
 
-  screen.setTextSize(2);
-  // Fields 10-16: Zone Durations
-  for (int i = 0; i < ZONE_COUNT; i++) {
-    int yPos = 160 + i * 25;
-    color = (programEditFieldIndex == (10 + i)) ? COLOR_RGB565_WHITE : COLOR_RGB565_LGRAY;
-    screen.setTextColor(color);
-    screen.setCursor(10, yPos);
-    char buf[50];
-    sprintf(buf, "Zone %d: %d min", i+1, cfg.zoneDurations[i]);
-    screen.println(buf);
+  // --- Draw scrollable list for Zone Durations ---
+  // Highlight the list title if any zone is being edited
+  if (programEditFieldIndex >= 11) {
+    programZonesScrollList.title_text_color = COLOR_RGB565_WHITE;
+  } else {
+    programZonesScrollList.title_text_color = COLOR_RGB565_YELLOW;
   }
+  drawScrollableList(screen, programZonesScrollList);
 
-  // Field 17: Inter-Zone Delay
-  color = (programEditFieldIndex == (10 + ZONE_COUNT)) ? COLOR_RGB565_WHITE : COLOR_RGB565_LGRAY;
-  screen.setTextColor(color);
-  screen.setCursor(10, 160 + ZONE_COUNT * 25);
-  screen.printf("Delay: %d min", cfg.interZoneDelay);
 
-  // Instructions
-  screen.setCursor(10, 250 + ZONE_COUNT * 25); // Adjust Y position based on number of zones
-  screen.setTextColor(COLOR_RGB565_WHITE);
+  // --- Instructions ---
   screen.setTextSize(1);
-  screen.println("Rotate to change value, Press to next field.");
-  screen.println("After last field => returns to Program Menu.");
+  screen.setTextColor(COLOR_RGB565_WHITE);
+  screen.setCursor(10, 290);
+  screen.println("Rotate to change, Press to select next.");
+  screen.println("Long press to exit.");
 }
 
 void handleProgramEditEncoder(long diff, ProgramConfig &cfg, const char* progLabel) {
-  switch (programEditFieldIndex) {
-    case 0: // Enabled
-      cfg.enabled = !cfg.enabled;
-      break;
-    case 1: // Start Hour
-      cfg.startTime.hour += diff;
-      if (cfg.startTime.hour < 0) cfg.startTime.hour = 23;
-      if (cfg.startTime.hour > 23) cfg.startTime.hour = 0;
-      break;
-    case 2: // Start Minute
-      cfg.startTime.minute += diff;
-      if (cfg.startTime.minute < 0) cfg.startTime.minute = 59;
-      if (cfg.startTime.minute > 59) cfg.startTime.minute = 0;
-      break;
-    case 3: case 4: case 5: case 6: case 7: case 8: case 9: // Days Active (Su-Sa)
-      {
-        uint8_t dayBit = (1 << (programEditFieldIndex - 3));
-        cfg.daysActive ^= dayBit; // Toggle the bit
-      }
-      break;
-    default: // Zone Durations and Inter-Zone Delay
-      if (programEditFieldIndex >= 10 && programEditFieldIndex < (10 + ZONE_COUNT)) {
-        // Editing zone durations (index 10 to 10 + ZONE_COUNT - 1)
-        int zoneIdx = programEditFieldIndex - 10;
-        int newDur = cfg.zoneDurations[zoneIdx] + diff;
-        if (newDur < 0)   newDur = 0;
-        if (newDur > 120) newDur = 120;  // limit to 120 min for demo
-        cfg.zoneDurations[zoneIdx] = newDur;
-      } else if (programEditFieldIndex == (10 + ZONE_COUNT)) {
-        // Editing interZoneDelay (index 10 + ZONE_COUNT)
-        int newDelay = cfg.interZoneDelay + diff;
-        if (newDelay < 0)  newDelay = 0;
-        if (newDelay > 30) newDelay = 30; // limit to 30 min for demo
-        cfg.interZoneDelay = newDelay;
-      }
-      break;
+  // New field indices: 0=enabled, 1=hour, 2=minute, 3=interZoneDelay, 4-10=days, 11-17=zones
+  if (programEditFieldIndex >= 11) {
+    // We are editing the zone list, so pass input to the list handler
+    int selected_zone_index = programEditFieldIndex - 11;
+    
+    // We don't use the list's own input handler because we need to modify the duration value directly
+    int newDur = cfg.zoneDurations[selected_zone_index] + diff;
+    if (newDur < 0)   newDur = 120;
+    if (newDur > 120) newDur = 0;
+    cfg.zoneDurations[selected_zone_index] = newDur;
+    
+    // Update the selected index in the scroll list
+    *programZonesScrollList.selected_index_ptr = selected_zone_index;
+
+  } else {
+    // Handle non-list fields
+    switch (programEditFieldIndex) {
+      case 0: // Enabled
+        if (diff != 0) cfg.enabled = !cfg.enabled;
+        break;
+      case 1: // Start Hour
+        cfg.startTime.hour = (cfg.startTime.hour + diff + 24) % 24;
+        break;
+      case 2: // Start Minute
+        cfg.startTime.minute = (cfg.startTime.minute + diff + 60) % 60;
+        break;
+      case 3: // Inter-Zone Delay
+        cfg.interZoneDelay += diff;
+        if (cfg.interZoneDelay < 0)  cfg.interZoneDelay = 30;
+        if (cfg.interZoneDelay > 30) cfg.interZoneDelay = 0;
+        break;
+      case 4: case 5: case 6: case 7: case 8: case 9: case 10: // Days Active
+        {
+          uint8_t dayBit = (1 << (programEditFieldIndex - 4));
+          if (diff != 0) { // Only toggle on movement
+            cfg.daysActive ^= dayBit; // Toggle the bit
+          }
+        }
+        break;
+    }
   }
+  
   drawProgramConfigMenu(progLabel, cfg);
 }
 
 void handleProgramEditButton(ProgramConfig &cfg, ProgramState thisState, const char* progLabel) {
   programEditFieldIndex++;
-  // Total fields: 1 (enabled) + 2 (time) + 7 (days) + 7 (zones) + 1 (delay) = 18 fields
-  // Max index is 17.
-  if (programEditFieldIndex > (10 + ZONE_COUNT)) { // If we've advanced beyond the last field
+  
+  // Total fields: 1 (enabled) + 2 (time) + 1 (delay) + 7 (days) + 7 (zones) = 18 fields
+  // Max index is 17 for 7 zones.
+  int max_field_index = 11 + ZONE_COUNT - 1;
+
+  if (programEditFieldIndex > max_field_index) {
     programEditFieldIndex = 0; // Reset for next time
+    
     // Return to the specific program's sub-menu
     if (thisState == STATE_PROG_A) enterState(STATE_PROGRAM_A_MENU);
     else if (thisState == STATE_PROG_B) enterState(STATE_PROGRAM_B_MENU);
     else if (thisState == STATE_PROG_C) enterState(STATE_PROGRAM_C_MENU);
     else enterState(STATE_MAIN_MENU); // Fallback
   } else {
+    // If we are entering the zone list, update the selected index
+    if (programEditFieldIndex >= 11) {
+      int selected_zone_index = programEditFieldIndex - 11;
+      *programZonesScrollList.selected_index_ptr = selected_zone_index;
+    }
     drawProgramConfigMenu(progLabel, cfg);
   }
 }
