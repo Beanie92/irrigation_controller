@@ -108,7 +108,9 @@ enum UIState {
 };
 
 UIState currentState = STATE_MAIN_MENU;
-UIState previousState = STATE_MAIN_MENU;
+const int UI_STATE_STACK_SIZE = 10;
+UIState uiStateStack[UI_STATE_STACK_SIZE];
+int uiStateStackPtr = -1;
 ActiveOperationType currentOperation = OP_NONE; // Track what kind of operation is active
 
 // Main Menu Items
@@ -155,6 +157,10 @@ int selectedManualZoneIndex = 0;
 int selectedManualDuration = 5;  // Default 5 minutes
 bool selectingDuration = false;  // Whether we're selecting duration or zone
 ScrollableList manualRunScrollList;
+
+// Program Config zone selection
+int selectedProgramZoneIndex = 0; // Used by all program config screens
+bool editingProgramZone = false; // Are we editing a zone duration?
 
 // -----------------------------------------------------------------------------
 //                           Zone Timer Variables
@@ -303,7 +309,7 @@ void drawLogo();
 void drawMainMenu();
 void drawProgramsMenu();
 void drawProgramSubMenu(const char* label);
-void navigateTo(UIState newState);
+void navigateTo(UIState newState, bool isNavigatingBack = false);
 void goBack();
 
 void updateSoftwareClock();
@@ -543,7 +549,11 @@ void handleEncoderMovement() {
         DEBUG_PRINTF("Manual run duration selection: %d minutes\n", selectedManualDuration);
       } else {
         handleScrollableListInput(manualRunScrollList, diff);
-        DEBUG_PRINTF("Manual run zone selection: %d (%s)\n", selectedManualZoneIndex, relayLabels[selectedManualZoneIndex + 1]);
+        if (selectedManualZoneIndex < ZONE_COUNT) { // Check index is valid for a zone
+          DEBUG_PRINTF("Manual run zone selection: %d (%s)\n", selectedManualZoneIndex, relayLabels[selectedManualZoneIndex + 1]);
+        } else {
+          DEBUG_PRINTF("Manual run selection: Back button\n");
+        }
       }
       drawManualRunMenu();
       break;
@@ -675,7 +685,9 @@ void handleButtonPress() {
           break;
 
         case STATE_MANUAL_RUN:
-          if (selectingDuration) {
+          if (selectedManualZoneIndex >= ZONE_COUNT) { // Is the "Back" button selected?
+            goBack();
+          } else if (selectingDuration) {
             DEBUG_PRINTF("Starting manual zone: %d for %d minutes\n", selectedManualZoneIndex + 1, selectedManualDuration);
             startManualZone(selectedManualZoneIndex + 1); // zoneIdx 1..7
           } else {
@@ -733,11 +745,17 @@ void handleButtonPress() {
 //                            STATE TRANSITIONS
 // -----------------------------------------------------------------------------
 void goBack() {
-  DEBUG_PRINTF("Going back from %d to %d\n", currentState, previousState);
-  navigateTo(previousState); // Navigate to the stored previous state
+  if (uiStateStackPtr >= 0) {
+    UIState lastState = uiStateStack[uiStateStackPtr--];
+    DEBUG_PRINTF("Going back from %d to %d\n", currentState, lastState);
+    navigateTo(lastState, true); // Navigate back, indicating it's a 'back' action
+  } else {
+    DEBUG_PRINTLN("State stack empty, cannot go back. Returning to main menu.");
+    navigateTo(STATE_MAIN_MENU);
+  }
 }
 
-void navigateTo(UIState newState) {
+void navigateTo(UIState newState, bool isNavigatingBack) {
   const char* stateNames[] = {
     "MAIN_MENU", "MANUAL_RUN", "PROGRAMS_MENU", "PROGRAM_A_MENU", "PROGRAM_B_MENU", "PROGRAM_C_MENU",
     "SETTINGS", "SET_SYSTEM_TIME", "WIFI_SETUP", "WIFI_RESET", "SYSTEM_INFO",
@@ -748,7 +766,17 @@ void navigateTo(UIState newState) {
     (currentState < sizeof(stateNames)/sizeof(stateNames[0])) ? stateNames[currentState] : "UNKNOWN",
     (newState < sizeof(stateNames)/sizeof(stateNames[0])) ? stateNames[newState] : "UNKNOWN");
   
-  previousState = currentState;
+  // Push the current state to the stack if we are navigating forward
+  if (!isNavigatingBack) {
+    if (currentState != STATE_PROGRAM_RUNNING && currentState != STATE_RUNNING_ZONE && currentState != STATE_TEST_MODE) {
+      if (uiStateStackPtr < UI_STATE_STACK_SIZE - 1) {
+        uiStateStack[++uiStateStackPtr] = currentState;
+      } else {
+        DEBUG_PRINTLN("UI state stack overflow!");
+      }
+    }
+  }
+  
   currentState = newState;
   screen.fillScreen(COLOR_RGB565_BLACK);
 
@@ -911,8 +939,8 @@ void navigateTo(UIState newState) {
     case STATE_PROG_C:
       {
         programEditFieldIndex = 0;
-        static int selectedZoneIndex = 0; // Must be static to persist
-        selectedZoneIndex = 0;
+        editingProgramZone = false;
+        selectedProgramZoneIndex = 0;
 
         ProgramConfig* currentProg;
         const char* progLabel;
@@ -922,7 +950,7 @@ void navigateTo(UIState newState) {
 
         programZonesScrollList.data_source = currentProg->zoneDurations;
         programZonesScrollList.num_items = ZONE_COUNT;
-        programZonesScrollList.selected_index_ptr = &selectedZoneIndex;
+        programZonesScrollList.selected_index_ptr = &selectedProgramZoneIndex;
         programZonesScrollList.format_string = "Zone %d: %d min";
         programZonesScrollList.x = 0;
         programZonesScrollList.y = 150;
@@ -936,6 +964,7 @@ void navigateTo(UIState newState) {
         programZonesScrollList.title = "Zone Durations (min)";
         programZonesScrollList.title_text_size = 2;
         programZonesScrollList.title_text_color = COLOR_RGB565_YELLOW;
+        programZonesScrollList.show_back_button = true;
         
         setupScrollableListMetrics(programZonesScrollList, screen);
         
@@ -1428,21 +1457,21 @@ void drawProgramConfigMenu(const char* label, ProgramConfig& cfg) {
 }
 
 void handleProgramEditEncoder(long diff, ProgramConfig &cfg, const char* progLabel) {
-  // New field indices: 0=enabled, 1=hour, 2=minute, 3=interZoneDelay, 4-10=days, 11-17=zones
-  if (programEditFieldIndex >= 11) {
-    // We are editing the zone list, so pass input to the list handler
-    int selected_zone_index = programEditFieldIndex - 11;
-    
-    // We don't use the list's own input handler because we need to modify the duration value directly
-    int newDur = cfg.zoneDurations[selected_zone_index] + diff;
-    if (newDur < 0)   newDur = 120;
-    if (newDur > 120) newDur = 0;
-    cfg.zoneDurations[selected_zone_index] = newDur;
-    
-    // Update the selected index in the scroll list
-    *programZonesScrollList.selected_index_ptr = selected_zone_index;
-
-  } else {
+  // New field indices: 0=enabled, 1=hour, 2=minute, 3=interZoneDelay, 4-10=days, 11=zone list
+  if (programEditFieldIndex == 11 && editingProgramZone) {
+    // We are editing a specific zone's duration
+    int selected_zone_index = *programZonesScrollList.selected_index_ptr;
+    if (selected_zone_index < programZonesScrollList.num_items) {
+      int newDur = cfg.zoneDurations[selected_zone_index] + diff;
+      if (newDur < 0)   newDur = 120;
+      if (newDur > 120) newDur = 0;
+      cfg.zoneDurations[selected_zone_index] = newDur;
+    }
+  } else if (programEditFieldIndex == 11) {
+    // We are navigating the zone list
+    handleScrollableListInput(programZonesScrollList, diff);
+  }
+  else {
     // Handle non-list fields
     switch (programEditFieldIndex) {
       case 0: // Enabled
@@ -1474,23 +1503,37 @@ void handleProgramEditEncoder(long diff, ProgramConfig &cfg, const char* progLab
 }
 
 void handleProgramEditButton(ProgramConfig &cfg, UIState thisState, const char* progLabel) {
-  programEditFieldIndex++;
-  
-  // Total fields: 1 (enabled) + 2 (time) + 1 (delay) + 7 (days) + 7 (zones) = 18 fields
-  // Max index is 17 for 7 zones.
-  int max_field_index = 11 + ZONE_COUNT - 1;
+  // If we are in the zone list (field index 11)
+  if (programEditFieldIndex == 11) {
+    int selected_zone_index = *programZonesScrollList.selected_index_ptr;
 
-  if (programEditFieldIndex > max_field_index) {
-    programEditFieldIndex = 0; // Reset for next time
-    goBack();
-  } else {
-    // If we are entering the zone list, update the selected index
-    if (programEditFieldIndex >= 11) {
-      int selected_zone_index = programEditFieldIndex - 11;
-      *programZonesScrollList.selected_index_ptr = selected_zone_index;
+    // If the "Back" button is selected, go back.
+    if (selected_zone_index == programZonesScrollList.num_items) {
+      programEditFieldIndex = 0; // Reset for next time
+      editingProgramZone = false;
+      goBack();
+      return;
     }
-    drawProgramConfigMenu(progLabel, cfg);
+
+    // Toggle editing mode for the selected zone
+    editingProgramZone = !editingProgramZone;
+
+    // If we are NOT editing anymore, it means we've confirmed the value.
+    // Let's just stay in the list to allow editing another zone.
+    // A long press should be used to exit, which is handled by goBack().
+    // Or the user can select the "Back" item.
+
+  } else {
+    // Otherwise, advance to the next field
+    programEditFieldIndex++;
   }
+  
+  // If we've moved past the simple fields (0-10), we enter the zone list editing mode (11).
+  if (programEditFieldIndex > 10) {
+    programEditFieldIndex = 11; // Cap at 11
+  }
+  
+  drawProgramConfigMenu(progLabel, cfg);
 }
 
 void startProgramRun(int programIndex, ActiveOperationType type) {

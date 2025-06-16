@@ -46,11 +46,12 @@ void drawScrollableList(DFRobot_ST7789_240x320_HW_SPI& screen, ScrollableList& l
     }
 
     // Ensure top_visible_index is within valid bounds
+    int total_items = list.num_items + (list.show_back_button ? 1 : 0);
     if (list.top_visible_index < 0) list.top_visible_index = 0;
-    if (list.num_items > list.max_items_in_view && list.top_visible_index > list.num_items - list.max_items_in_view) {
-        list.top_visible_index = list.num_items - list.max_items_in_view;
+    if (total_items > list.max_items_in_view && list.top_visible_index > total_items - list.max_items_in_view) {
+        list.top_visible_index = total_items - list.max_items_in_view;
     }
-    if (list.num_items <= list.max_items_in_view) { // If all items fit, no need to scroll
+     if (total_items <= list.max_items_in_view) { // If all items fit, no need to scroll
         list.top_visible_index = 0;
     }
 
@@ -78,25 +79,28 @@ void drawScrollableList(DFRobot_ST7789_240x320_HW_SPI& screen, ScrollableList& l
         if (is_back_button_item) {
             screen.println("<- Back");
         } else if (list.format_string != nullptr && list.data_source != nullptr) {
+            // Data-driven list (e.g., for zone durations)
             char buffer[50];
-            uint16_t* durations = static_cast<uint16_t*>(list.data_source);
-            sprintf(buffer, list.format_string, current_item_index + 1, durations[current_item_index]);
+            // Assuming data_source is an array of uint16_t as per current usage
+            uint16_t* data_array = static_cast<uint16_t*>(list.data_source);
+            sprintf(buffer, list.format_string, current_item_index + 1, data_array[current_item_index]);
             screen.println(buffer);
-        } else {
+        } else if (list.items != nullptr) {
+            // Simple string array list
             screen.println(list.items[current_item_index]);
         }
     }
 
     // Draw scroll indicators if not all items are visible
-    if (list.num_items > list.max_items_in_view) {
+    if (total_items > list.max_items_in_view) {
         screen.setTextSize(1); // Smaller text for indicators
         screen.setTextColor(COLOR_RGB565_CYAN);
         if (list.top_visible_index > 0) {
             screen.setCursor(list.x + list.width - 20, list.list_items_area_y + 5); // Top right
             screen.println("^");
         }
-        if (list.top_visible_index + list.max_items_in_view < list.num_items) {
-            screen.setCursor(list.x + list.width - 20, list.list_items_area_y + list.list_items_area_height - 15); // Bottom right
+        if (list.top_visible_index + list.max_items_in_view < total_items) {
+            screen.setCursor(list.x + list.width - 20, list.y + list.height - 15); // Bottom right
             screen.println("v");
         }
     }
