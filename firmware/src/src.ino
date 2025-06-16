@@ -54,6 +54,7 @@ static const int ZONE_COUNT = 7; // zones 1..7
 #define TFT_DC   2
 #define TFT_CS   6
 #define TFT_RST  3
+#define TFT_BL   5 // Backlight control pin for dimming
 
 DFRobot_ST7789_240x320_HW_SPI screen(TFT_DC, TFT_CS, TFT_RST);
 
@@ -68,6 +69,13 @@ const char* relayLabels[NUM_RELAYS] = {
   "Zone 6",
   "Zone 7"
 };
+
+// -----------------------------------------------------------------------------
+//                           Screen Dimming
+// -----------------------------------------------------------------------------
+unsigned long lastActivityTime = 0;
+const unsigned long inactivityTimeout = 30000; // 30 seconds
+bool isScreenDimmed = false;
 
 // -----------------------------------------------------------------------------
 //                           Menu and Program States
@@ -130,6 +138,7 @@ const char* programSubMenuLabels[PROGRAM_SUB_MENU_ITEMS] = {
   "Back to Programs"
 };
 int selectedProgramSubMenuIndex = 0;
+ScrollableList programSubMenuScrollList;
 
 // Settings Menu Items
 static const int SETTINGS_MENU_ITEMS = 5;
@@ -141,11 +150,13 @@ const char* settingsMenuLabels[SETTINGS_MENU_ITEMS] = {
   "Back to Main Menu"
 };
 int selectedSettingsMenuIndex = 0;
+ScrollableList settingsMenuScrollList;
 
 // Manual Run zone index: 0..6 => zone = index+1
 int selectedManualZoneIndex = 0;
 int selectedManualDuration = 5;  // Default 5 minutes
 bool selectingDuration = false;  // Whether we're selecting duration or zone
+ScrollableList manualRunScrollList;
 
 // -----------------------------------------------------------------------------
 //                           Zone Timer Variables
@@ -271,6 +282,7 @@ static const int NUM_PROGRAMS = 3;
 //                Sub-indexes and helpers for editing fields
 // -----------------------------------------------------------------------------
 static int timeEditFieldIndex = 0;    // 0=year,1=month,2=day,3=hour,4=minute,5=second
+static bool editingTimeField = false;
 static int programEditFieldIndex = 0; // 0=enabled, 1=hour, 2=minute, 3=interZoneDelay, 4-10=days, 11-17=zone durations
 static int zoneEditScrollOffset = 0; // For scrolling through zones in program config
 
@@ -298,7 +310,9 @@ const char* WIFI_PASS_KEY = "wifi_pass";
 
 // Global instance for main menu
 ScrollableList mainMenuScrollList;
+ScrollableList programsMenuScrollList;
 ScrollableList programZonesScrollList; // For zone durations in program config
+ScrollableList setTimeScrollList;
 
 // -----------------------------------------------------------------------------
 //                           Forward Declarations
@@ -374,6 +388,11 @@ void setup() {
   screen.fillScreen(COLOR_RGB565_BLACK);
   DEBUG_PRINTLN("Display initialized successfully");
 
+  // Setup backlight
+  pinMode(TFT_BL, OUTPUT);
+  digitalWrite(TFT_BL, HIGH); // Full brightness initially
+  lastActivityTime = millis();
+
   // Show logo for 3 seconds
   DEBUG_PRINTLN("Displaying logo...");
   drawLogo();
@@ -410,6 +429,13 @@ void setup() {
 //                                     LOOP
 // -----------------------------------------------------------------------------
 void loop() {
+  // Handle screen dimming
+  if (!isScreenDimmed && (millis() - lastActivityTime > inactivityTimeout)) {
+    DEBUG_PRINTLN("Screen turning off due to inactivity.");
+    digitalWrite(TFT_BL, LOW); // Turn off backlight
+    isScreenDimmed = true;
+  }
+
   // Update time - use NTP if available, otherwise software clock
   if (timeSync) {
     updateTimeFromNTP(); // Check for periodic NTP sync
@@ -494,6 +520,14 @@ void handleEncoderMovement() {
   lastEncoderPosition = newVal;
   if (diff == 0) return;
 
+  // Restore screen brightness on activity
+  if (isScreenDimmed) {
+    digitalWrite(TFT_BL, HIGH); // Full brightness
+    isScreenDimmed = false;
+    DEBUG_PRINTLN("Screen brightness restored.");
+  }
+  lastActivityTime = millis();
+
   DEBUG_PRINTF("Encoder moved: diff=%ld, state=%d\n", diff, currentState);
 
   switch (currentState) {
@@ -504,10 +538,7 @@ void handleEncoderMovement() {
       break;
 
     case STATE_PROGRAMS_MENU:
-      if (diff > 0) selectedProgramsMenuIndex++;
-      else          selectedProgramsMenuIndex--;
-      if      (selectedProgramsMenuIndex < 0)                 selectedProgramsMenuIndex = PROGRAMS_MENU_ITEMS - 1;
-      else if (selectedProgramsMenuIndex >= PROGRAMS_MENU_ITEMS) selectedProgramsMenuIndex = 0;
+      handleScrollableListInput(programsMenuScrollList, diff);
       DEBUG_PRINTF("Programs menu selection: %d (%s)\n", selectedProgramsMenuIndex, programsMenuLabels[selectedProgramsMenuIndex]);
       drawProgramsMenu();
       break;
@@ -515,15 +546,15 @@ void handleEncoderMovement() {
     case STATE_PROGRAM_A_MENU:
     case STATE_PROGRAM_B_MENU:
     case STATE_PROGRAM_C_MENU:
-      if (diff > 0) selectedProgramSubMenuIndex++;
-      else          selectedProgramSubMenuIndex--;
-      if      (selectedProgramSubMenuIndex < 0)                   selectedProgramSubMenuIndex = PROGRAM_SUB_MENU_ITEMS - 1;
-      else if (selectedProgramSubMenuIndex >= PROGRAM_SUB_MENU_ITEMS) selectedProgramSubMenuIndex = 0;
-      DEBUG_PRINTF("Program sub-menu selection: %d (%s)\n", selectedProgramSubMenuIndex, programSubMenuLabels[selectedProgramSubMenuIndex]);
-      // Redraw based on current state to get correct program name
-      if (currentState == STATE_PROGRAM_A_MENU) drawProgramSubMenu("Program A");
-      else if (currentState == STATE_PROGRAM_B_MENU) drawProgramSubMenu("Program B");
-      else if (currentState == STATE_PROGRAM_C_MENU) drawProgramSubMenu("Program C");
+      handleScrollableListInput(programSubMenuScrollList, diff);
+      {
+        const char* progLabel;
+        if (currentState == STATE_PROGRAM_A_MENU) progLabel = "Program A";
+        else if (currentState == STATE_PROGRAM_B_MENU) progLabel = "Program B";
+        else progLabel = "Program C";
+        DEBUG_PRINTF("Program sub-menu selection: %d (%s)\n", selectedProgramSubMenuIndex, programSubMenuLabels[selectedProgramSubMenuIndex]);
+        drawProgramSubMenu(progLabel);
+      }
       break;
 
     case STATE_MANUAL_RUN:
@@ -533,20 +564,14 @@ void handleEncoderMovement() {
         if (selectedManualDuration > 120) selectedManualDuration = 1;
         DEBUG_PRINTF("Manual run duration selection: %d minutes\n", selectedManualDuration);
       } else {
-        if (diff > 0) selectedManualZoneIndex++;
-        else          selectedManualZoneIndex--;
-        if      (selectedManualZoneIndex < 0)           selectedManualZoneIndex = ZONE_COUNT - 1;
-        else if (selectedManualZoneIndex >= ZONE_COUNT) selectedManualZoneIndex = 0;
+        handleScrollableListInput(manualRunScrollList, diff);
         DEBUG_PRINTF("Manual run zone selection: %d (%s)\n", selectedManualZoneIndex, relayLabels[selectedManualZoneIndex + 1]);
       }
       drawManualRunMenu();
       break;
 
     case STATE_SETTINGS:
-      if (diff > 0) selectedSettingsMenuIndex++;
-      else          selectedSettingsMenuIndex--;
-      if      (selectedSettingsMenuIndex < 0)                    selectedSettingsMenuIndex = SETTINGS_MENU_ITEMS - 1;
-      else if (selectedSettingsMenuIndex >= SETTINGS_MENU_ITEMS) selectedSettingsMenuIndex = 0;
+      handleScrollableListInput(settingsMenuScrollList, diff);
       DEBUG_PRINTF("Settings menu selection: %d (%s)\n", selectedSettingsMenuIndex, settingsMenuLabels[selectedSettingsMenuIndex]);
       drawSettingsMenu();
       break;
@@ -587,6 +612,14 @@ void handleButtonPress() {
     if ((now - lastButtonPressTime) > buttonDebounce) {
       lastButtonPressTime = now;
       DEBUG_PRINTF("Button pressed in state %d\n", currentState);
+
+      // Restore screen brightness on activity
+      if (isScreenDimmed) {
+        digitalWrite(TFT_BL, HIGH); // Full brightness
+        isScreenDimmed = false;
+        DEBUG_PRINTLN("Screen brightness restored.");
+      }
+      lastActivityTime = millis();
 
       // State-Specific Handling
       switch (currentState) {
@@ -789,36 +822,116 @@ void enterState(ProgramState newState) {
     case STATE_MANUAL_RUN:
       selectedManualZoneIndex = 0;
       selectingDuration = false;
+      manualRunScrollList.items = &relayLabels[1]; // Skip "Pump"
+      manualRunScrollList.num_items = ZONE_COUNT;
+      manualRunScrollList.selected_index_ptr = &selectedManualZoneIndex;
+      manualRunScrollList.x = 0;
+      manualRunScrollList.y = 70;
+      manualRunScrollList.width = 320;
+      manualRunScrollList.height = 240 - 70;
+      manualRunScrollList.item_text_size = 2;
+      manualRunScrollList.item_text_color = COLOR_RGB565_LGRAY;
+      manualRunScrollList.selected_item_text_color = COLOR_RGB565_WHITE;
+      manualRunScrollList.selected_item_bg_color = COLOR_RGB565_BLUE;
+      manualRunScrollList.list_bg_color = COLOR_RGB565_BLACK;
+      manualRunScrollList.title = "Select Zone";
+      manualRunScrollList.title_text_size = 2;
+      manualRunScrollList.title_text_color = COLOR_RGB565_YELLOW;
+      setupScrollableListMetrics(manualRunScrollList, screen);
       DEBUG_PRINTLN("Entering manual run mode");
       drawManualRunMenu();
       break;
     case STATE_PROGRAMS_MENU:
       selectedProgramsMenuIndex = 0;
+      programsMenuScrollList.items = programsMenuLabels;
+      programsMenuScrollList.num_items = PROGRAMS_MENU_ITEMS;
+      programsMenuScrollList.selected_index_ptr = &selectedProgramsMenuIndex;
+      programsMenuScrollList.x = 0;
+      programsMenuScrollList.y = 70;
+      programsMenuScrollList.width = 320;
+      programsMenuScrollList.height = 240 - 70;
+      programsMenuScrollList.item_text_size = 2;
+      programsMenuScrollList.item_text_color = COLOR_RGB565_LGRAY;
+      programsMenuScrollList.selected_item_text_color = COLOR_RGB565_WHITE;
+      programsMenuScrollList.selected_item_bg_color = COLOR_RGB565_BLUE;
+      programsMenuScrollList.list_bg_color = COLOR_RGB565_BLACK;
+      programsMenuScrollList.title = "Programs";
+      programsMenuScrollList.title_text_size = 2;
+      programsMenuScrollList.title_text_color = COLOR_RGB565_YELLOW;
+      setupScrollableListMetrics(programsMenuScrollList, screen);
       DEBUG_PRINTLN("Entering programs menu");
       drawProgramsMenu();
       break;
     case STATE_PROGRAM_A_MENU:
-      selectedProgramSubMenuIndex = 0;
-      DEBUG_PRINTLN("Entering Program A sub-menu");
-      drawProgramSubMenu("Program A");
-      break;
     case STATE_PROGRAM_B_MENU:
-      selectedProgramSubMenuIndex = 0;
-      DEBUG_PRINTLN("Entering Program B sub-menu");
-      drawProgramSubMenu("Program B");
-      break;
     case STATE_PROGRAM_C_MENU:
       selectedProgramSubMenuIndex = 0;
-      DEBUG_PRINTLN("Entering Program C sub-menu");
-      drawProgramSubMenu("Program C");
+      {
+        const char* progLabel;
+        if (newState == STATE_PROGRAM_A_MENU) progLabel = "Program A";
+        else if (newState == STATE_PROGRAM_B_MENU) progLabel = "Program B";
+        else progLabel = "Program C";
+
+        programSubMenuScrollList.items = programSubMenuLabels;
+        programSubMenuScrollList.num_items = PROGRAM_SUB_MENU_ITEMS;
+        programSubMenuScrollList.selected_index_ptr = &selectedProgramSubMenuIndex;
+        programSubMenuScrollList.x = 0;
+        programSubMenuScrollList.y = 70;
+        programSubMenuScrollList.width = 320;
+        programSubMenuScrollList.height = 240 - 70;
+        programSubMenuScrollList.item_text_size = 2;
+        programSubMenuScrollList.item_text_color = COLOR_RGB565_LGRAY;
+        programSubMenuScrollList.selected_item_text_color = COLOR_RGB565_WHITE;
+        programSubMenuScrollList.selected_item_bg_color = COLOR_RGB565_BLUE;
+        programSubMenuScrollList.list_bg_color = COLOR_RGB565_BLACK;
+        programSubMenuScrollList.title = progLabel;
+        programSubMenuScrollList.title_text_size = 2;
+        programSubMenuScrollList.title_text_color = COLOR_RGB565_YELLOW;
+        setupScrollableListMetrics(programSubMenuScrollList, screen);
+        DEBUG_PRINTF("Entering %s sub-menu\n", progLabel);
+        drawProgramSubMenu(progLabel);
+      }
       break;
     case STATE_SETTINGS:
       selectedSettingsMenuIndex = 0;
+      settingsMenuScrollList.items = settingsMenuLabels;
+      settingsMenuScrollList.num_items = SETTINGS_MENU_ITEMS;
+      settingsMenuScrollList.selected_index_ptr = &selectedSettingsMenuIndex;
+      settingsMenuScrollList.x = 0;
+      settingsMenuScrollList.y = 50; // Start list below the status info
+      settingsMenuScrollList.width = 320;
+      settingsMenuScrollList.height = 240 - 50; // Adjust height
+      settingsMenuScrollList.item_text_size = 2;
+      settingsMenuScrollList.item_text_color = COLOR_RGB565_LGRAY;
+      settingsMenuScrollList.selected_item_text_color = COLOR_RGB565_WHITE;
+      settingsMenuScrollList.selected_item_bg_color = COLOR_RGB565_BLUE;
+      settingsMenuScrollList.list_bg_color = COLOR_RGB565_BLACK;
+      settingsMenuScrollList.title = "Settings";
+      settingsMenuScrollList.title_text_size = 2;
+      settingsMenuScrollList.title_text_color = COLOR_RGB565_YELLOW;
+      setupScrollableListMetrics(settingsMenuScrollList, screen);
       DEBUG_PRINTLN("Entering settings menu");
       drawSettingsMenu();
       break;
     case STATE_SET_SYSTEM_TIME:
       timeEditFieldIndex = 0;
+      editingTimeField = false;
+      // Note: The list items are dynamically generated in drawSetSystemTimeMenu
+      setTimeScrollList.num_items = 7; // 6 fields + 1 for "Back"
+      setTimeScrollList.selected_index_ptr = &timeEditFieldIndex;
+      setTimeScrollList.x = 0;
+      setTimeScrollList.y = 70;
+      setTimeScrollList.width = 320;
+      setTimeScrollList.height = 240 - 70;
+      setTimeScrollList.item_text_size = 2;
+      setTimeScrollList.item_text_color = COLOR_RGB565_LGRAY;
+      setTimeScrollList.selected_item_text_color = COLOR_RGB565_WHITE;
+      setTimeScrollList.selected_item_bg_color = COLOR_RGB565_BLUE;
+      setTimeScrollList.list_bg_color = COLOR_RGB565_BLACK;
+      setTimeScrollList.title = "Set System Time";
+      setTimeScrollList.title_text_size = 2;
+      setTimeScrollList.title_text_color = COLOR_RGB565_YELLOW;
+      setupScrollableListMetrics(setTimeScrollList, screen);
       DEBUG_PRINTLN("Entering system time setting mode");
       drawSetSystemTimeMenu();
       break;
@@ -897,50 +1010,22 @@ void drawMainMenu() {
   drawDateTime(10, 10);
   
   // Draw the scrollable list for the main menu
-  drawScrollableList(screen, mainMenuScrollList);
+  drawScrollableList(screen, mainMenuScrollList, true);
 }
 
 // -----------------------------------------------------------------------------
 //                           PROGRAMS MENU DRAWING
 // -----------------------------------------------------------------------------
 void drawProgramsMenu() {
-  screen.fillScreen(COLOR_RGB565_BLACK);
-
-  screen.setTextSize(2);
-  screen.setTextColor(COLOR_RGB565_YELLOW);
-  screen.setCursor(10, 10);
-  screen.println("Programs");
-
-  // Draw each menu item
-  for (int i = 0; i < PROGRAMS_MENU_ITEMS; i++) {
-    int yPos = 50 + i * 30;
-    uint16_t color = (i == selectedProgramsMenuIndex) ? COLOR_RGB565_WHITE : COLOR_RGB565_LGRAY;
-    screen.setTextColor(color);
-    screen.setCursor(10, yPos);
-    screen.println(programsMenuLabels[i]);
-  }
+  drawScrollableList(screen, programsMenuScrollList, true);
 }
 
 // -----------------------------------------------------------------------------
 //                           PROGRAM SUB-MENU DRAWING
 // -----------------------------------------------------------------------------
 void drawProgramSubMenu(const char* label) {
-  screen.fillScreen(COLOR_RGB565_BLACK);
-
-  screen.setTextSize(2);
-  screen.setTextColor(COLOR_RGB565_YELLOW);
-  screen.setCursor(10, 10);
-  screen.print(label);
-  screen.println(" Options");
-
-  // Draw each menu item
-  for (int i = 0; i < PROGRAM_SUB_MENU_ITEMS; i++) {
-    int yPos = 50 + i * 30;
-    uint16_t color = (i == selectedProgramSubMenuIndex) ? COLOR_RGB565_WHITE : COLOR_RGB565_LGRAY;
-    screen.setTextColor(color);
-    screen.setCursor(10, yPos);
-    screen.println(programSubMenuLabels[i]);
-  }
+  programSubMenuScrollList.title = label;
+  drawScrollableList(screen, programSubMenuScrollList, true);
 }
 
 // A simple function to display the current date/time
@@ -1048,13 +1133,13 @@ DayOfWeek getCurrentDayOfWeek() {
 void drawManualRunMenu() {
   screen.fillScreen(COLOR_RGB565_BLACK);
 
-  screen.setTextSize(2);
-  screen.setTextColor(COLOR_RGB565_YELLOW);
-  screen.setCursor(10, 10);
-  screen.println("Manual Run");
-
   if (selectingDuration) {
     // Duration selection mode
+    screen.setTextSize(2);
+    screen.setTextColor(COLOR_RGB565_YELLOW);
+    screen.setCursor(10, 10);
+    screen.println("Manual Run");
+    
     screen.setCursor(10, 40);
     screen.setTextColor(COLOR_RGB565_GREEN);
     screen.printf("Zone: %s", relayLabels[selectedManualZoneIndex + 1]);
@@ -1089,30 +1174,8 @@ void drawManualRunMenu() {
     screen.println("Long press to go back");
     
   } else {
-    // Zone selection mode
-    screen.setCursor(10, 40);
-    screen.setTextColor(COLOR_RGB565_RED);
-    screen.println("Select Zone:");
-
-    // List zones
-    for (int i = 0; i < ZONE_COUNT; i++) {
-      int yPos = 80 + i * 25;
-      uint16_t color = (i == selectedManualZoneIndex) ? COLOR_RGB565_WHITE : COLOR_RGB565_LGRAY;
-      screen.setTextColor(color);
-      screen.setCursor(10, yPos);
-      // zone i => relay i+1
-      screen.print(relayLabels[i+1]);
-      screen.print(": ");
-      screen.println(relayStates[i+1] ? "ON" : "OFF");
-    }
-    
-    // Instructions
-    screen.setTextSize(1);
-    screen.setTextColor(COLOR_RGB565_YELLOW);
-    screen.setCursor(10, 260);
-    screen.println("Rotate to select zone");
-    screen.setCursor(10, 275);
-    screen.println("Press button to set duration");
+    // Zone selection mode using scrollable list
+    drawScrollableList(screen, manualRunScrollList, true);
   }
 }
 
@@ -1273,93 +1336,100 @@ void stopAllActivity() { // Renamed from stopZone
 // -----------------------------------------------------------------------------
 //                       SET SYSTEM TIME (FULLY IMPLEMENTED)
 // -----------------------------------------------------------------------------
+// Buffers for dynamically generating the menu item strings
+char setTimeDisplayStrings[7][32]; // Increased size for "Back"
+const char* setTimeDisplayPointers[7];
+
 void drawSetSystemTimeMenu() {
-  screen.fillScreen(COLOR_RGB565_BLACK);
+  // Dynamically generate the display strings for the list
+  sprintf(setTimeDisplayStrings[0], "Year  : %d", currentDateTime.year);
+  sprintf(setTimeDisplayStrings[1], "Month : %d", currentDateTime.month);
+  sprintf(setTimeDisplayStrings[2], "Day   : %d", currentDateTime.day);
+  sprintf(setTimeDisplayStrings[3], "Hour  : %d", currentDateTime.hour);
+  sprintf(setTimeDisplayStrings[4], "Minute: %d", currentDateTime.minute);
+  sprintf(setTimeDisplayStrings[5], "Second: %d", currentDateTime.second);
+  sprintf(setTimeDisplayStrings[6], "Back to Settings");
 
-  screen.setTextSize(2);
-  screen.setTextColor(COLOR_RGB565_YELLOW);
-  screen.setCursor(10, 10);
-  screen.println("Set System Time");
 
-  // We'll display each field (year, month, day, hour, minute, second)
-  // and highlight the one currently being edited.
-  screen.setTextSize(2);
+  // The scrollable list component expects an array of const char*
+  for (int i = 0; i < 7; i++) {
+    setTimeDisplayPointers[i] = setTimeDisplayStrings[i];
+  }
+  setTimeScrollList.items = setTimeDisplayPointers;
 
-  // Helper lambda for drawing a line with highlight
-  auto drawField = [&](int lineIndex, const char* label, int value){
-    int y = 60 + lineIndex * 30;
-    uint16_t color = (lineIndex == timeEditFieldIndex) ? COLOR_RGB565_WHITE : COLOR_RGB565_LGRAY;
-    screen.setTextColor(color);
-    screen.setCursor(10, y);
-    char buf[32];
-    sprintf(buf, "%s %d", label, value);
-    screen.println(buf);
-  };
+  // Highlight the background of the item being edited
+  if (editingTimeField) {
+    setTimeScrollList.selected_item_bg_color = COLOR_RGB565_ORANGE;
+  } else {
+    setTimeScrollList.selected_item_bg_color = COLOR_RGB565_BLUE;
+  }
 
-  drawField(0, "Year  :", currentDateTime.year);
-  drawField(1, "Month :", currentDateTime.month);
-  drawField(2, "Day   :", currentDateTime.day);
-  drawField(3, "Hour  :", currentDateTime.hour);
-  drawField(4, "Min   :", currentDateTime.minute);
-  drawField(5, "Sec   :", currentDateTime.second);
-
-  // Instructions
-  screen.setTextSize(1);
-  screen.setTextColor(COLOR_RGB565_WHITE);
-  screen.setCursor(10, 260);
-  screen.println("Rotate to change value, Press to next field.");
+  drawScrollableList(screen, setTimeScrollList, true);
 }
 
 void handleSetSystemTimeEncoder(long diff) {
-  // Modify the currently selected field
-  switch(timeEditFieldIndex) {
-    case 0: // Year
-      currentDateTime.year += diff;
-      if (currentDateTime.year < MIN_YEAR) currentDateTime.year = MIN_YEAR;
-      if (currentDateTime.year > MAX_YEAR) currentDateTime.year = MAX_YEAR;
-      break;
-    case 1: // Month
-      currentDateTime.month += diff;
-      if (currentDateTime.month < 1) currentDateTime.month = 12;
-      if (currentDateTime.month > 12) currentDateTime.month = 1;
-      break;
-    case 2: // Day
-      currentDateTime.day += diff;
-      if (currentDateTime.day < 1) currentDateTime.day = 31;
-      if (currentDateTime.day > 31) currentDateTime.day = 1;
-      break;
-    case 3: // Hour
-      currentDateTime.hour += diff;
-      if (currentDateTime.hour < 0) currentDateTime.hour = 23;
-      if (currentDateTime.hour > 23) currentDateTime.hour = 0;
-      break;
-    case 4: // Minute
-      currentDateTime.minute += diff;
-      if (currentDateTime.minute < 0) currentDateTime.minute = 59;
-      if (currentDateTime.minute > 59) currentDateTime.minute = 0;
-      break;
-    case 5: // Second
-      currentDateTime.second += diff;
-      if (currentDateTime.second < 0) currentDateTime.second = 59;
-      if (currentDateTime.second > 59) currentDateTime.second = 0;
-      break;
-    default:
-      break;
+  if (editingTimeField) {
+    // In edit mode, modify the value of the selected field
+    switch(timeEditFieldIndex) {
+      case 0: // Year
+        currentDateTime.year += diff;
+        if (currentDateTime.year < MIN_YEAR) currentDateTime.year = MIN_YEAR;
+        if (currentDateTime.year > MAX_YEAR) currentDateTime.year = MAX_YEAR;
+        break;
+      case 1: // Month
+        currentDateTime.month += diff;
+        if (currentDateTime.month < 1) currentDateTime.month = 12;
+        if (currentDateTime.month > 12) currentDateTime.month = 1;
+        break;
+      case 2: // Day
+        currentDateTime.day += diff;
+        if (currentDateTime.day < 1) currentDateTime.day = 31;
+        if (currentDateTime.day > 31) currentDateTime.day = 1;
+        break;
+      case 3: // Hour
+        currentDateTime.hour += diff;
+        if (currentDateTime.hour < 0) currentDateTime.hour = 23;
+        if (currentDateTime.hour > 23) currentDateTime.hour = 0;
+        break;
+      case 4: // Minute
+        currentDateTime.minute += diff;
+        if (currentDateTime.minute < 0) currentDateTime.minute = 59;
+        if (currentDateTime.minute > 59) currentDateTime.minute = 0;
+        break;
+      case 5: // Second
+        currentDateTime.second += diff;
+        if (currentDateTime.second < 0) currentDateTime.second = 59;
+        if (currentDateTime.second > 59) currentDateTime.second = 0;
+        break;
+    }
+  } else {
+    // In selection mode, navigate the list
+    handleScrollableListInput(setTimeScrollList, diff);
   }
+  
   // Redraw the screen with updated value
   drawSetSystemTimeMenu();
 }
 
 void handleSetSystemTimeButton() {
-  // Move to the next field
-  timeEditFieldIndex++;
-  if (timeEditFieldIndex > 5) {
-    // Done editing all fields
-    timeEditFieldIndex = 0;
-    enterState(STATE_MAIN_MENU);
-  } else {
-    drawSetSystemTimeMenu();
+  // If "Back to Settings" is selected, just go back
+  if (timeEditFieldIndex == 6) {
+    enterState(STATE_SETTINGS);
+    return;
   }
+
+  // Toggle between selection and editing mode for the other fields
+  editingTimeField = !editingTimeField;
+
+  // If we just finished editing a field, move to the next one automatically
+  if (!editingTimeField) {
+    timeEditFieldIndex++;
+    if (timeEditFieldIndex > 6) { // Wrap around or exit
+        timeEditFieldIndex = 0; // Or handle exit logic
+    }
+  }
+  
+  drawSetSystemTimeMenu();
 }
 
 // -----------------------------------------------------------------------------
@@ -1411,13 +1481,8 @@ void drawProgramConfigMenu(const char* label, ProgramConfig& cfg) {
   }
 
   // --- Draw scrollable list for Zone Durations ---
-  // Highlight the list title if any zone is being edited
-  if (programEditFieldIndex >= 11) {
-    programZonesScrollList.title_text_color = COLOR_RGB565_WHITE;
-  } else {
-    programZonesScrollList.title_text_color = COLOR_RGB565_YELLOW;
-  }
-  drawScrollableList(screen, programZonesScrollList);
+  bool is_zone_list_active = (programEditFieldIndex >= 11);
+  drawScrollableList(screen, programZonesScrollList, is_zone_list_active);
 
 
   // --- Instructions ---
@@ -1840,16 +1905,16 @@ void updateSystemTimeFromNTP() {
 //                           Settings Menu Functions
 // -----------------------------------------------------------------------------
 void drawSettingsMenu() {
-  screen.fillScreen(COLOR_RGB565_BLACK);
-
-  screen.setTextSize(2);
-  screen.setTextColor(COLOR_RGB565_YELLOW);
-  screen.setCursor(10, 10);
-  screen.println("Settings");
-
-  // Show WiFi status indicator
+  // This function is now simpler. It just draws the status and the list.
+  // The main screen clearing is handled in enterState.
+  
+  // --- Draw the static status information at the top ---
+  // We only need to redraw this part if something changes, but for simplicity,
+  // we'll redraw it each time. A more optimized approach would be to have a
+  // separate function that only updates the top status bar.
+  screen.fillRect(0, 0, 320, 50, COLOR_RGB565_BLACK); // Clear top area
   screen.setTextSize(1);
-  screen.setCursor(10, 40);
+  screen.setCursor(10, 10);
   if (wifiConnected) {
     screen.setTextColor(COLOR_RGB565_GREEN);
     screen.printf("WiFi: Connected (%s)", WiFi.SSID().c_str());
@@ -1858,8 +1923,7 @@ void drawSettingsMenu() {
     screen.println("WiFi: Not Connected");
   }
 
-  // Show time sync status
-  screen.setCursor(10, 55);
+  screen.setCursor(10, 25);
   if (timeSync) {
     screen.setTextColor(COLOR_RGB565_GREEN);
     screen.println("Time: NTP Synced");
@@ -1867,22 +1931,13 @@ void drawSettingsMenu() {
     screen.setTextColor(COLOR_RGB565_YELLOW);
     screen.println("Time: Manual/Software Clock");
   }
+  
+  // Draw a separator line
+  screen.drawLine(0, 45, 320, 45, COLOR_RGB565_LGRAY);
 
-  // Draw each settings menu item
-  screen.setTextSize(2);
-  for (int i = 0; i < SETTINGS_MENU_ITEMS; i++) {
-    int yPos = 90 + i * 30;
-    uint16_t color = (i == selectedSettingsMenuIndex) ? COLOR_RGB565_WHITE : COLOR_RGB565_LGRAY;
-    screen.setTextColor(color);
-    screen.setCursor(10, yPos);
-    screen.println(settingsMenuLabels[i]);
-  }
-
-  // Instructions
-  screen.setTextSize(1);
-  screen.setTextColor(COLOR_RGB565_WHITE);
-  screen.setCursor(10, 250);
-  screen.println("Rotate to select, Press to confirm");
+  // --- Draw the scrollable list for the settings items ---
+  // The list is drawn starting from y=50, as configured in enterState
+  drawScrollableList(screen, settingsMenuScrollList, true);
 }
 
 void startWiFiSetup() {
@@ -2208,5 +2263,7 @@ void stopTestMode() {
   
   stopAllActivity(); // Ensure all relays are off
   
+  DEBUG_PRINTLN("Test mode stopped - all relays OFF");
+}
   DEBUG_PRINTLN("Test mode stopped - all relays OFF");
 }

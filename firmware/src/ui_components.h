@@ -38,7 +38,7 @@ struct ScrollableList {
 
 // Helper functions for the scrollable list
 void setupScrollableListMetrics(ScrollableList& list, DFRobot_ST7789_240x320_HW_SPI& screen);
-void drawScrollableList(DFRobot_ST7789_240x320_HW_SPI& screen, ScrollableList& list);
+void drawScrollableList(DFRobot_ST7789_240x320_HW_SPI& screen, ScrollableList& list, bool is_active);
 void handleScrollableListInput(ScrollableList& list, long encoder_diff);
 
 #endif // UI_COMPONENTS_H

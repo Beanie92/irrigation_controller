@@ -25,7 +25,7 @@ void setupScrollableListMetrics(ScrollableList& list, DFRobot_ST7789_240x320_HW_
 }
 
 // Helper function to draw a scrollable list
-void drawScrollableList(DFRobot_ST7789_240x320_HW_SPI& screen, ScrollableList& list) {
+void drawScrollableList(DFRobot_ST7789_240x320_HW_SPI& screen, ScrollableList& list, bool is_active) {
     // Clear the component's background area
     screen.fillRect(list.x, list.y, list.width, list.height, list.list_bg_color);
 
@@ -61,8 +61,8 @@ void drawScrollableList(DFRobot_ST7789_240x320_HW_SPI& screen, ScrollableList& l
 
         int yPos = list.list_items_area_y + (i * list.item_render_height);
         
-        // Highlight selected item
-        if (current_item_index == *list.selected_index_ptr) {
+        // Highlight selected item only if the list is active
+        if (is_active && current_item_index == *list.selected_index_ptr) {
             screen.fillRect(list.x, yPos, list.width, list.item_render_height, list.selected_item_bg_color);
             screen.setTextColor(list.selected_item_text_color);
         } else {
