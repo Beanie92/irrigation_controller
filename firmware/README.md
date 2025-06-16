@@ -7,7 +7,7 @@ ESP32-C6 based irrigation controller with WiFi connectivity and NTP time synchro
 - **WiFi Connectivity**: Automatic connection to saved WiFi networks
 - **NTP Time Synchronization**: Automatic time sync from internet time servers
 - **Manual Zone Control**: Control individual irrigation zones via rotary encoder interface
-- **Program Scheduling**: Three programmable irrigation schedules (A, B, C)
+- **Cycle Scheduling**: Three programmable irrigation schedules (A, B, C)
 - **TFT Display**: 240x320 color display with intuitive menu system
 - **Relay Control**: 8-channel relay control (1 pump + 7 zones)
 
@@ -102,8 +102,8 @@ const int daylightOffset_sec = 0;    // Daylight saving offset
 ### Main Menu
 - **Manual Run**: Start individual zones manually
 - **Settings**: Access system configuration options
-- **Set Cycle Start**: Configure program start times
-- **Program A/B/C**: Configure automated irrigation programs
+- **Set Cycle Start**: Configure cycle start times
+- **Cycle A/B/C**: Configure automated irrigation cycles
 
 ### Settings Submenu
 - **WiFi Setup**: Launch captive portal for WiFi configuration
@@ -119,10 +119,10 @@ const int daylightOffset_sec = 0;    // Daylight saving offset
 
 ## Programming Irrigation Schedules
 
-Each program (A, B, C) can be configured with:
+Each cycle (A, B, C) can be configured with:
 - **Zone Durations**: Individual run times for each zone (0-120 minutes)
 - **Inter-zone Delay**: Pause between zones (0-30 minutes)
-- **Start Time**: When the program should begin
+- **Start Time**: When the cycle should begin
 - **Active Days**: Which days of the week to run
 
 ## Troubleshooting
@@ -168,7 +168,7 @@ Connect serial monitor at 115200 baud to see detailed system information.
 
 - Always verify relay wiring before connecting pumps/valves
 - Use appropriate fuses and circuit protection
-- Test manual operation before setting up automated programs
+- Test manual operation before setting up automated cycles
 - Ensure adequate power supply for your specific hardware
 - Consider using contactors for high-power pumps
 

@@ -78,22 +78,22 @@ const unsigned long inactivityTimeout = 30000; // 30 seconds
 bool isScreenDimmed = false;
 
 // -----------------------------------------------------------------------------
-//                           Menu and Program States
+//                           Menu and Cycle States
 // -----------------------------------------------------------------------------
 enum ActiveOperationType {
   OP_NONE,
   OP_MANUAL_ZONE,
-  OP_MANUAL_PROGRAM,
-  OP_SCHEDULED_PROGRAM
+  OP_MANUAL_CYCLE,
+  OP_SCHEDULED_CYCLE
 };
 
 enum UIState {
   STATE_MAIN_MENU,
   STATE_MANUAL_RUN,        
-  STATE_PROGRAMS_MENU,
-  STATE_PROGRAM_A_MENU,
-  STATE_PROGRAM_B_MENU,
-  STATE_PROGRAM_C_MENU,
+  STATE_CYCLES_MENU,
+  STATE_CYCLE_A_MENU,
+  STATE_CYCLE_B_MENU,
+  STATE_CYCLE_C_MENU,
   STATE_SETTINGS,
   STATE_SET_SYSTEM_TIME,
   STATE_WIFI_SETUP,
@@ -103,7 +103,7 @@ enum UIState {
   STATE_PROG_B,
   STATE_PROG_C,
   STATE_RUNNING_ZONE,
-  STATE_PROGRAM_RUNNING,
+  STATE_CYCLE_RUNNING,
   STATE_TEST_MODE
 };
 
@@ -117,29 +117,29 @@ ActiveOperationType currentOperation = OP_NONE; // Track what kind of operation 
 static const int MAIN_MENU_ITEMS = 4; 
 const char* mainMenuLabels[MAIN_MENU_ITEMS] = {
   "Manual Run",
-  "Programs", // New submenu
+  "Cycles", // New submenu
   "Test Mode",
   "Settings"
 };
 int selectedMainMenuIndex = 0; 
 
-// Programs Menu Items (lists Program A, B, C)
-static const int PROGRAMS_MENU_ITEMS = 3; // A, B, C
-const char* programsMenuLabels[PROGRAMS_MENU_ITEMS] = {
-  "Program A",
-  "Program B",
-  "Program C"
+// Cycles Menu Items (lists Cycle A, B, C)
+static const int CYCLES_MENU_ITEMS = 3; // A, B, C
+const char* cyclesMenuLabels[CYCLES_MENU_ITEMS] = {
+  "Cycle A",
+  "Cycle B",
+  "Cycle C"
 };
-int selectedProgramsMenuIndex = 0;
+int selectedCyclesMenuIndex = 0;
 
-// Individual Program Sub-Menu Items (Run Now, Configure)
-static const int PROGRAM_SUB_MENU_ITEMS = 2; // Run Now, Configure
-const char* programSubMenuLabels[PROGRAM_SUB_MENU_ITEMS] = {
+// Individual Cycle Sub-Menu Items (Run Now, Configure)
+static const int CYCLE_SUB_MENU_ITEMS = 2; // Run Now, Configure
+const char* cycleSubMenuLabels[CYCLE_SUB_MENU_ITEMS] = {
   "Run Now",
   "Configure"
 };
-int selectedProgramSubMenuIndex = 0;
-ScrollableList programSubMenuScrollList;
+int selectedCycleSubMenuIndex = 0;
+ScrollableList cycleSubMenuScrollList;
 
 // Settings Menu Items
 static const int SETTINGS_MENU_ITEMS = 4;
@@ -158,9 +158,9 @@ int selectedManualDuration = 5;  // Default 5 minutes
 bool selectingDuration = false;  // Whether we're selecting duration or zone
 ScrollableList manualRunScrollList;
 
-// Program Config zone selection
-int selectedProgramZoneIndex = 0; // Used by all program config screens
-bool editingProgramZone = false; // Are we editing a zone duration?
+// Cycle Config zone selection
+int selectedCycleZoneIndex = 0; // Used by all program config screens
+bool editingCycleZone = false; // Are we editing a zone duration?
 
 // -----------------------------------------------------------------------------
 //                           Zone Timer Variables
@@ -169,10 +169,10 @@ unsigned long zoneStartTime = 0;        // When current zone started
 unsigned long zoneDuration = 0;         // Duration for current zone in milliseconds
 int currentRunningZone = -1;            // Which zone is currently running (-1 = none)
 bool isTimedRun = false;                 // Whether this is a timed run or manual indefinite run
-int currentRunningProgram = -1;         // Which program is currently running (-1 = none, 0=A, 1=B, 2=C)
-int currentProgramZoneIndex = -1;       // Current zone index within a running program
-unsigned long programZoneStartTime = 0; // When current program zone started
-unsigned long programInterZoneDelayStartTime = 0; // When inter-zone delay started
+int currentRunningCycle = -1;         // Which cycle is currently running (-1 = none, 0=A, 1=B, 2=C)
+int currentCycleZoneIndex = -1;       // Current zone index within a running cycle
+unsigned long cycleZoneStartTime = 0; // When current cycle zone started
+unsigned long cycleInterZoneDelayStartTime = 0; // When inter-zone delay started
 bool inInterZoneDelay = false;          // Flag for inter-zone delay
 
 // -----------------------------------------------------------------------------
@@ -216,7 +216,7 @@ void incrementOneSecond() {
 }
 
 // -----------------------------------------------------------------------------
-//                 Program Config
+//                 Cycle Config
 // -----------------------------------------------------------------------------
 // Time structure (could use instead of SystemDateTime for start time)
 typedef struct {
@@ -224,51 +224,51 @@ typedef struct {
     uint8_t minute;  // 0-59
 } TimeOfDay;
 
-// Main program configuration structure
-struct ProgramConfig {
-    bool enabled;           // Whether this program is active
-    TimeOfDay startTime;    // When to start the program
+// Main cycle configuration structure
+struct CycleConfig {
+    bool enabled;           // Whether this cycle is active
+    TimeOfDay startTime;    // When to start the cycle
     uint8_t daysActive;     // Bitfield using DayOfWeek values
     uint8_t interZoneDelay; // Minutes to wait between zones
     uint16_t zoneDurations[ZONE_COUNT]; // Minutes per zone (renamed from zoneRunTimes)
-    char name[16];          // Optional: Program name/description
+    char name[16];          // Optional: Cycle name/description
 };
 
-ProgramConfig programA = {
+CycleConfig cycleA = {
     .enabled = true,
     .startTime = {6, 0},  // 6:00 AM
     .daysActive = MONDAY | WEDNESDAY | FRIDAY,
     .interZoneDelay = 1,
     .zoneDurations = {5, 5, 5, 5, 5, 5, 5},
-    .name = "Program A"
+    .name = "Cycle A"
 };
-ProgramConfig programB = {
+CycleConfig cycleB = {
     .enabled = false,
     .startTime = {6, 0},  // 6:00 AM
     .daysActive = MONDAY | WEDNESDAY | FRIDAY,
     .interZoneDelay = 1,
     .zoneDurations = {5, 5, 5, 5, 5, 5, 5},
-    .name = "Program B"
+    .name = "Cycle B"
 };
-ProgramConfig programC = {
+CycleConfig cycleC = {
     .enabled = false,
     .startTime = {6, 0},  // 6:00 AM
     .daysActive = MONDAY | WEDNESDAY | FRIDAY,
     .interZoneDelay = 1,
     .zoneDurations = {5, 5, 5, 5, 5, 5, 5},
-    .name = "Program C"
+    .name = "Cycle C"
 };
 
-ProgramConfig* programs[] = {&programA, &programB, &programC};
-static const int NUM_PROGRAMS = 3;
+CycleConfig* cycles[] = {&cycleA, &cycleB, &cycleC};
+static const int NUM_CYCLES = 3;
 
 // -----------------------------------------------------------------------------
 //                Sub-indexes and helpers for editing fields
 // -----------------------------------------------------------------------------
 static int timeEditFieldIndex = 0;    // 0=year,1=month,2=day,3=hour,4=minute,5=second
 static bool editingTimeField = false;
-static int programEditFieldIndex = 0; // 0=enabled, 1=hour, 2=minute, 3=interZoneDelay, 4-10=days, 11-17=zone durations
-static int zoneEditScrollOffset = 0; // For scrolling through zones in program config
+static int cycleEditFieldIndex = 0; // 0=enabled, 1=hour, 2=minute, 3=interZoneDelay, 4-10=days, 11-17=zone durations
+static int zoneEditScrollOffset = 0; // For scrolling through zones in cycle config
 
 // Ranges for system time fields (simple example)
 #define MIN_YEAR  2020
@@ -294,8 +294,8 @@ const char* WIFI_PASS_KEY = "wifi_pass";
 
 // Global instance for main menu
 ScrollableList mainMenuScrollList;
-ScrollableList programsMenuScrollList;
-ScrollableList programZonesScrollList; // For zone durations in program config
+ScrollableList cyclesMenuScrollList;
+ScrollableList cycleZonesScrollList; // For zone durations in cycle config
 ScrollableList setTimeScrollList;
 
 // -----------------------------------------------------------------------------
@@ -307,8 +307,8 @@ void handleButtonPress();
 
 void drawLogo();
 void drawMainMenu();
-void drawProgramsMenu();
-void drawProgramSubMenu(const char* label);
+void drawCyclesMenu();
+void drawCycleSubMenu(const char* label);
 void navigateTo(UIState newState, bool isNavigatingBack = false);
 void goBack();
 
@@ -327,12 +327,12 @@ void handleSetSystemTimeEncoder(long diff);
 void handleSetSystemTimeButton();
 
 // Program A/B/C
-void drawProgramConfigMenu(const char* label, ProgramConfig& cfg);
-void handleProgramEditEncoder(long diff, ProgramConfig &cfg, const char* progLabel);
-void handleProgramEditButton(ProgramConfig &cfg, UIState thisState, const char* progLabel);
-void startProgramRun(int programIndex, ActiveOperationType type);
-void updateProgramRun();
-void drawProgramRunningMenu();
+void drawCycleConfigMenu(const char* label, CycleConfig& cfg);
+void handleCycleEditEncoder(long diff, CycleConfig &cfg, const char* progLabel);
+void handleCycleEditButton(CycleConfig &cfg, UIState thisState, const char* progLabel);
+void startCycleRun(int cycleIndex, ActiveOperationType type);
+void updateCycleRun();
+void drawCycleRunningMenu();
 
 // Settings menu functions
 void drawSettingsMenu();
@@ -431,20 +431,20 @@ void loop() {
   handleEncoderMovement();
   handleButtonPress();
 
-  // Check for scheduled programs if no other operation is active
+  // Check for scheduled cycles if no other operation is active
   if (currentOperation == OP_NONE) {
     DayOfWeek currentDay = getCurrentDayOfWeek();
-    for (int i = 0; i < NUM_PROGRAMS; i++) {
-      ProgramConfig* cfg = programs[i];
+    for (int i = 0; i < NUM_CYCLES; i++) {
+      CycleConfig* cfg = cycles[i];
       if (cfg->enabled && (cfg->daysActive & currentDay) &&
           currentDateTime.hour == cfg->startTime.hour &&
           currentDateTime.minute == cfg->startTime.minute &&
           currentDateTime.second == 0) { // Trigger at the start of the minute
-        DEBUG_PRINTF("Scheduled program %s triggered!\n", cfg->name);
-        startProgramRun(i, OP_SCHEDULED_PROGRAM);
+        DEBUG_PRINTF("Scheduled cycle %s triggered!\n", cfg->name);
+        startCycleRun(i, OP_SCHEDULED_CYCLE);
         // Add a small delay to prevent re-triggering in the same second
         delay(1000); 
-        break; // Only one program can start per second
+        break; // Only one cycle can start per second
       }
     }
   }
@@ -467,8 +467,8 @@ void loop() {
         navigateTo(STATE_MAIN_MENU);
       }
     }
-  } else if (currentState == STATE_PROGRAM_RUNNING) {
-    updateProgramRun();
+  } else if (currentState == STATE_CYCLE_RUNNING) {
+    updateCycleRun();
   } else if (currentState == STATE_TEST_MODE && testModeActive) {
     updateTestMode();
   }
@@ -517,27 +517,24 @@ void handleEncoderMovement() {
   switch (currentState) {
     case STATE_MAIN_MENU:
       handleScrollableListInput(mainMenuScrollList, diff);
-      DEBUG_PRINTF("Main menu selection: %d (%s)\n", selectedMainMenuIndex, mainMenuLabels[selectedMainMenuIndex]);
       drawMainMenu();
       break;
 
-    case STATE_PROGRAMS_MENU:
-      handleScrollableListInput(programsMenuScrollList, diff);
-      DEBUG_PRINTF("Programs menu selection: %d (%s)\n", selectedProgramsMenuIndex, programsMenuLabels[selectedProgramsMenuIndex]);
-      drawProgramsMenu();
+    case STATE_CYCLES_MENU:
+      handleScrollableListInput(cyclesMenuScrollList, diff);
+      drawCyclesMenu();
       break;
 
-    case STATE_PROGRAM_A_MENU:
-    case STATE_PROGRAM_B_MENU:
-    case STATE_PROGRAM_C_MENU:
-      handleScrollableListInput(programSubMenuScrollList, diff);
+    case STATE_CYCLE_A_MENU:
+    case STATE_CYCLE_B_MENU:
+    case STATE_CYCLE_C_MENU:
+      handleScrollableListInput(cycleSubMenuScrollList, diff);
       {
         const char* progLabel;
-        if (currentState == STATE_PROGRAM_A_MENU) progLabel = "Program A";
-        else if (currentState == STATE_PROGRAM_B_MENU) progLabel = "Program B";
-        else progLabel = "Program C";
-        DEBUG_PRINTF("Program sub-menu selection: %d (%s)\n", selectedProgramSubMenuIndex, programSubMenuLabels[selectedProgramSubMenuIndex]);
-        drawProgramSubMenu(progLabel);
+        if (currentState == STATE_CYCLE_A_MENU) progLabel = "Cycle A";
+        else if (currentState == STATE_CYCLE_B_MENU) progLabel = "Cycle B";
+        else progLabel = "Cycle C";
+        drawCycleSubMenu(progLabel);
       }
       break;
 
@@ -549,18 +546,12 @@ void handleEncoderMovement() {
         DEBUG_PRINTF("Manual run duration selection: %d minutes\n", selectedManualDuration);
       } else {
         handleScrollableListInput(manualRunScrollList, diff);
-        if (selectedManualZoneIndex < ZONE_COUNT) { // Check index is valid for a zone
-          DEBUG_PRINTF("Manual run zone selection: %d (%s)\n", selectedManualZoneIndex, relayLabels[selectedManualZoneIndex + 1]);
-        } else {
-          DEBUG_PRINTF("Manual run selection: Back button\n");
-        }
       }
       drawManualRunMenu();
       break;
 
     case STATE_SETTINGS:
       handleScrollableListInput(settingsMenuScrollList, diff);
-      DEBUG_PRINTF("Settings menu selection: %d (%s)\n", selectedSettingsMenuIndex, settingsMenuLabels[selectedSettingsMenuIndex]);
       drawSettingsMenu();
       break;
 
@@ -569,20 +560,20 @@ void handleEncoderMovement() {
       break;
 
     case STATE_PROG_A:
-      handleProgramEditEncoder(diff, programA, "Program A");
+      handleCycleEditEncoder(diff, cycleA, "Cycle A");
       break;
 
     case STATE_PROG_B:
-      handleProgramEditEncoder(diff, programB, "Program B");
+      handleCycleEditEncoder(diff, cycleB, "Cycle B");
       break;
 
     case STATE_PROG_C:
-      handleProgramEditEncoder(diff, programC, "Program C");
+      handleCycleEditEncoder(diff, cycleC, "Cycle C");
       break;
 
     case STATE_RUNNING_ZONE:
-    case STATE_PROGRAM_RUNNING:
-      DEBUG_PRINTLN("Encoder ignored - zone/program is running");
+    case STATE_CYCLE_RUNNING:
+      DEBUG_PRINTLN("Encoder ignored - zone/cycle is running");
       break;
 
     default:
@@ -612,66 +603,60 @@ void handleButtonPress() {
       // State-Specific Handling
       switch (currentState) {
         case STATE_MAIN_MENU:
-          DEBUG_PRINTF("Main menu item selected: %d (%s)\n", selectedMainMenuIndex, mainMenuLabels[selectedMainMenuIndex]);
           switch (selectedMainMenuIndex) {
             case 0: navigateTo(STATE_MANUAL_RUN); break;
-            case 1: navigateTo(STATE_PROGRAMS_MENU); break;
+            case 1: navigateTo(STATE_CYCLES_MENU); break;
             case 2: navigateTo(STATE_TEST_MODE); break;
             case 3: navigateTo(STATE_SETTINGS); break;
           }
           break;
 
-        case STATE_PROGRAMS_MENU:
-          DEBUG_PRINTF("Programs menu item selected: %d (%s)\n", selectedProgramsMenuIndex, programsMenuLabels[selectedProgramsMenuIndex]);
-          if (selectedProgramsMenuIndex == PROGRAMS_MENU_ITEMS) { // Back button
+        case STATE_CYCLES_MENU:
+          if (selectedCyclesMenuIndex == CYCLES_MENU_ITEMS) { // Back button
             goBack();
           } else {
-            switch (selectedProgramsMenuIndex) {
-              case 0: navigateTo(STATE_PROGRAM_A_MENU); break;
-              case 1: navigateTo(STATE_PROGRAM_B_MENU); break;
-              case 2: navigateTo(STATE_PROGRAM_C_MENU); break;
+            switch (selectedCyclesMenuIndex) {
+              case 0: navigateTo(STATE_CYCLE_A_MENU); break;
+              case 1: navigateTo(STATE_CYCLE_B_MENU); break;
+              case 2: navigateTo(STATE_CYCLE_C_MENU); break;
             }
           }
           break;
 
-        case STATE_PROGRAM_A_MENU:
-          DEBUG_PRINTF("Program A sub-menu item selected: %d (%s)\n", selectedProgramSubMenuIndex, programSubMenuLabels[selectedProgramSubMenuIndex]);
-          if (selectedProgramSubMenuIndex == PROGRAM_SUB_MENU_ITEMS) { // Back button
+        case STATE_CYCLE_A_MENU:
+          if (selectedCycleSubMenuIndex == CYCLE_SUB_MENU_ITEMS) { // Back button
             goBack();
           } else {
-            switch (selectedProgramSubMenuIndex) {
-              case 0: startProgramRun(0, OP_MANUAL_PROGRAM); break;
+            switch (selectedCycleSubMenuIndex) {
+              case 0: startCycleRun(0, OP_MANUAL_CYCLE); break;
               case 1: navigateTo(STATE_PROG_A); break;
             }
           }
           break;
 
-        case STATE_PROGRAM_B_MENU:
-          DEBUG_PRINTF("Program B sub-menu item selected: %d (%s)\n", selectedProgramSubMenuIndex, programSubMenuLabels[selectedProgramSubMenuIndex]);
-          if (selectedProgramSubMenuIndex == PROGRAM_SUB_MENU_ITEMS) { // Back button
+        case STATE_CYCLE_B_MENU:
+          if (selectedCycleSubMenuIndex == CYCLE_SUB_MENU_ITEMS) { // Back button
             goBack();
           } else {
-            switch (selectedProgramSubMenuIndex) {
-              case 0: startProgramRun(1, OP_MANUAL_PROGRAM); break;
+            switch (selectedCycleSubMenuIndex) {
+              case 0: startCycleRun(1, OP_MANUAL_CYCLE); break;
               case 1: navigateTo(STATE_PROG_B); break;
             }
           }
           break;
 
-        case STATE_PROGRAM_C_MENU:
-          DEBUG_PRINTF("Program C sub-menu item selected: %d (%s)\n", selectedProgramSubMenuIndex, programSubMenuLabels[selectedProgramSubMenuIndex]);
-          if (selectedProgramSubMenuIndex == PROGRAM_SUB_MENU_ITEMS) { // Back button
+        case STATE_CYCLE_C_MENU:
+          if (selectedCycleSubMenuIndex == CYCLE_SUB_MENU_ITEMS) { // Back button
             goBack();
           } else {
-            switch (selectedProgramSubMenuIndex) {
-              case 0: startProgramRun(2, OP_MANUAL_PROGRAM); break;
+            switch (selectedCycleSubMenuIndex) {
+              case 0: startCycleRun(2, OP_MANUAL_CYCLE); break;
               case 1: navigateTo(STATE_PROG_C); break;
             }
           }
           break;
 
         case STATE_SETTINGS:
-          DEBUG_PRINTF("Settings menu item selected: %d (%s)\n", selectedSettingsMenuIndex, settingsMenuLabels[selectedSettingsMenuIndex]);
           if (selectedSettingsMenuIndex == SETTINGS_MENU_ITEMS) { // Back button
             goBack();
           } else {
@@ -703,23 +688,23 @@ void handleButtonPress() {
           break;
 
         case STATE_PROG_A:
-          DEBUG_PRINTF("Program A button - field %d\n", programEditFieldIndex);
-          handleProgramEditButton(programA, STATE_PROG_A, "Program A");
+          DEBUG_PRINTF("Cycle A button - field %d\n", cycleEditFieldIndex);
+          handleCycleEditButton(cycleA, STATE_PROG_A, "Cycle A");
           break;
 
         case STATE_PROG_B:
-          DEBUG_PRINTF("Program B button - field %d\n", programEditFieldIndex);
-          handleProgramEditButton(programB, STATE_PROG_B, "Program B");
+          DEBUG_PRINTF("Cycle B button - field %d\n", cycleEditFieldIndex);
+          handleCycleEditButton(cycleB, STATE_PROG_B, "Cycle B");
           break;
 
         case STATE_PROG_C:
-          DEBUG_PRINTF("Program C button - field %d\n", programEditFieldIndex);
-          handleProgramEditButton(programC, STATE_PROG_C, "Program C");
+          DEBUG_PRINTF("Cycle C button - field %d\n", cycleEditFieldIndex);
+          handleCycleEditButton(cycleC, STATE_PROG_C, "Cycle C");
           break;
 
         case STATE_RUNNING_ZONE:
-        case STATE_PROGRAM_RUNNING:
-          DEBUG_PRINTLN("Cancelling running zone/program");
+        case STATE_CYCLE_RUNNING:
+          DEBUG_PRINTLN("Cancelling running zone/cycle");
           stopAllActivity();
           navigateTo(STATE_MAIN_MENU);
           break;
@@ -757,9 +742,9 @@ void goBack() {
 
 void navigateTo(UIState newState, bool isNavigatingBack) {
   const char* stateNames[] = {
-    "MAIN_MENU", "MANUAL_RUN", "PROGRAMS_MENU", "PROGRAM_A_MENU", "PROGRAM_B_MENU", "PROGRAM_C_MENU",
+    "MAIN_MENU", "MANUAL_RUN", "CYCLES_MENU", "CYCLE_A_MENU", "CYCLE_B_MENU", "CYCLE_C_MENU",
     "SETTINGS", "SET_SYSTEM_TIME", "WIFI_SETUP", "WIFI_RESET", "SYSTEM_INFO",
-    "PROG_A", "PROG_B", "PROG_C", "RUNNING_ZONE", "PROGRAM_RUNNING", "TEST_MODE"
+    "PROG_A", "PROG_B", "PROG_C", "RUNNING_ZONE", "CYCLE_RUNNING", "TEST_MODE"
   };
   
   DEBUG_PRINTF("State transition: %s -> %s\n", 
@@ -768,7 +753,7 @@ void navigateTo(UIState newState, bool isNavigatingBack) {
   
   // Push the current state to the stack if we are navigating forward
   if (!isNavigatingBack) {
-    if (currentState != STATE_PROGRAM_RUNNING && currentState != STATE_RUNNING_ZONE && currentState != STATE_TEST_MODE) {
+    if (currentState != STATE_CYCLE_RUNNING && currentState != STATE_RUNNING_ZONE && currentState != STATE_TEST_MODE) {
       if (uiStateStackPtr < UI_STATE_STACK_SIZE - 1) {
         uiStateStack[++uiStateStackPtr] = currentState;
       } else {
@@ -825,57 +810,57 @@ void navigateTo(UIState newState, bool isNavigatingBack) {
       DEBUG_PRINTLN("Entering manual run mode");
       drawManualRunMenu();
       break;
-    case STATE_PROGRAMS_MENU:
-      selectedProgramsMenuIndex = 0;
-      programsMenuScrollList.items = programsMenuLabels;
-      programsMenuScrollList.num_items = PROGRAMS_MENU_ITEMS;
-      programsMenuScrollList.selected_index_ptr = &selectedProgramsMenuIndex;
-      programsMenuScrollList.x = 0;
-      programsMenuScrollList.y = 70;
-      programsMenuScrollList.width = 320;
-      programsMenuScrollList.height = 240 - 70;
-      programsMenuScrollList.item_text_size = 2;
-      programsMenuScrollList.item_text_color = COLOR_RGB565_LGRAY;
-      programsMenuScrollList.selected_item_text_color = COLOR_RGB565_WHITE;
-      programsMenuScrollList.selected_item_bg_color = COLOR_RGB565_BLUE;
-      programsMenuScrollList.list_bg_color = COLOR_RGB565_BLACK;
-      programsMenuScrollList.title = "Programs";
-      programsMenuScrollList.title_text_size = 2;
-      programsMenuScrollList.title_text_color = COLOR_RGB565_YELLOW;
-      programsMenuScrollList.show_back_button = true;
-      setupScrollableListMetrics(programsMenuScrollList, screen);
-      DEBUG_PRINTLN("Entering programs menu");
-      drawProgramsMenu();
+    case STATE_CYCLES_MENU:
+      selectedCyclesMenuIndex = 0;
+      cyclesMenuScrollList.items = cyclesMenuLabels;
+      cyclesMenuScrollList.num_items = CYCLES_MENU_ITEMS;
+      cyclesMenuScrollList.selected_index_ptr = &selectedCyclesMenuIndex;
+      cyclesMenuScrollList.x = 0;
+      cyclesMenuScrollList.y = 70;
+      cyclesMenuScrollList.width = 320;
+      cyclesMenuScrollList.height = 240 - 70;
+      cyclesMenuScrollList.item_text_size = 2;
+      cyclesMenuScrollList.item_text_color = COLOR_RGB565_LGRAY;
+      cyclesMenuScrollList.selected_item_text_color = COLOR_RGB565_WHITE;
+      cyclesMenuScrollList.selected_item_bg_color = COLOR_RGB565_BLUE;
+      cyclesMenuScrollList.list_bg_color = COLOR_RGB565_BLACK;
+      cyclesMenuScrollList.title = "Cycles";
+      cyclesMenuScrollList.title_text_size = 2;
+      cyclesMenuScrollList.title_text_color = COLOR_RGB565_YELLOW;
+      cyclesMenuScrollList.show_back_button = true;
+      setupScrollableListMetrics(cyclesMenuScrollList, screen);
+      DEBUG_PRINTLN("Entering cycles menu");
+      drawCyclesMenu();
       break;
-    case STATE_PROGRAM_A_MENU:
-    case STATE_PROGRAM_B_MENU:
-    case STATE_PROGRAM_C_MENU:
-      selectedProgramSubMenuIndex = 0;
+    case STATE_CYCLE_A_MENU:
+    case STATE_CYCLE_B_MENU:
+    case STATE_CYCLE_C_MENU:
+      selectedCycleSubMenuIndex = 0;
       {
         const char* progLabel;
-        if (newState == STATE_PROGRAM_A_MENU) progLabel = "Program A";
-        else if (newState == STATE_PROGRAM_B_MENU) progLabel = "Program B";
-        else progLabel = "Program C";
+        if (newState == STATE_CYCLE_A_MENU) progLabel = "Cycle A";
+        else if (newState == STATE_CYCLE_B_MENU) progLabel = "Cycle B";
+        else progLabel = "Cycle C";
 
-        programSubMenuScrollList.items = programSubMenuLabels;
-        programSubMenuScrollList.num_items = PROGRAM_SUB_MENU_ITEMS;
-        programSubMenuScrollList.selected_index_ptr = &selectedProgramSubMenuIndex;
-        programSubMenuScrollList.x = 0;
-        programSubMenuScrollList.y = 70;
-        programSubMenuScrollList.width = 320;
-        programSubMenuScrollList.height = 240 - 70;
-        programSubMenuScrollList.item_text_size = 2;
-        programSubMenuScrollList.item_text_color = COLOR_RGB565_LGRAY;
-        programSubMenuScrollList.selected_item_text_color = COLOR_RGB565_WHITE;
-        programSubMenuScrollList.selected_item_bg_color = COLOR_RGB565_BLUE;
-        programSubMenuScrollList.list_bg_color = COLOR_RGB565_BLACK;
-        programSubMenuScrollList.title = progLabel;
-        programSubMenuScrollList.title_text_size = 2;
-        programSubMenuScrollList.title_text_color = COLOR_RGB565_YELLOW;
-        programSubMenuScrollList.show_back_button = true;
-        setupScrollableListMetrics(programSubMenuScrollList, screen);
+        cycleSubMenuScrollList.items = cycleSubMenuLabels;
+        cycleSubMenuScrollList.num_items = CYCLE_SUB_MENU_ITEMS;
+        cycleSubMenuScrollList.selected_index_ptr = &selectedCycleSubMenuIndex;
+        cycleSubMenuScrollList.x = 0;
+        cycleSubMenuScrollList.y = 70;
+        cycleSubMenuScrollList.width = 320;
+        cycleSubMenuScrollList.height = 240 - 70;
+        cycleSubMenuScrollList.item_text_size = 2;
+        cycleSubMenuScrollList.item_text_color = COLOR_RGB565_LGRAY;
+        cycleSubMenuScrollList.selected_item_text_color = COLOR_RGB565_WHITE;
+        cycleSubMenuScrollList.selected_item_bg_color = COLOR_RGB565_BLUE;
+        cycleSubMenuScrollList.list_bg_color = COLOR_RGB565_BLACK;
+        cycleSubMenuScrollList.title = progLabel;
+        cycleSubMenuScrollList.title_text_size = 2;
+        cycleSubMenuScrollList.title_text_color = COLOR_RGB565_YELLOW;
+        cycleSubMenuScrollList.show_back_button = true;
+        setupScrollableListMetrics(cycleSubMenuScrollList, screen);
         DEBUG_PRINTF("Entering %s sub-menu\n", progLabel);
-        drawProgramSubMenu(progLabel);
+        drawCycleSubMenu(progLabel);
       }
       break;
     case STATE_SETTINGS:
@@ -938,47 +923,47 @@ void navigateTo(UIState newState, bool isNavigatingBack) {
     case STATE_PROG_B:
     case STATE_PROG_C:
       {
-        programEditFieldIndex = 0;
-        editingProgramZone = false;
-        selectedProgramZoneIndex = 0;
+        cycleEditFieldIndex = 0;
+        editingCycleZone = false;
+        selectedCycleZoneIndex = 0;
 
-        ProgramConfig* currentProg;
+        CycleConfig* currentProg;
         const char* progLabel;
-        if (newState == STATE_PROG_A) { currentProg = &programA; progLabel = "Program A"; }
-        else if (newState == STATE_PROG_B) { currentProg = &programB; progLabel = "Program B"; }
-        else { currentProg = &programC; progLabel = "Program C"; }
+        if (newState == STATE_PROG_A) { currentProg = &cycleA; progLabel = "Cycle A"; }
+        else if (newState == STATE_PROG_B) { currentProg = &cycleB; progLabel = "Cycle B"; }
+        else { currentProg = &cycleC; progLabel = "Cycle C"; }
 
-        programZonesScrollList.data_source = currentProg->zoneDurations;
-        programZonesScrollList.num_items = ZONE_COUNT;
-        programZonesScrollList.selected_index_ptr = &selectedProgramZoneIndex;
-        programZonesScrollList.format_string = "Zone %d: %d min";
-        programZonesScrollList.x = 0;
-        programZonesScrollList.y = 150;
-        programZonesScrollList.width = 320;
-        programZonesScrollList.height = 95;
-        programZonesScrollList.item_text_size = 2;
-        programZonesScrollList.item_text_color = COLOR_RGB565_LGRAY;
-        programZonesScrollList.selected_item_text_color = COLOR_RGB565_WHITE;
-        programZonesScrollList.selected_item_bg_color = COLOR_RGB565_BLUE;
-        programZonesScrollList.list_bg_color = COLOR_RGB565_BLACK;
-        programZonesScrollList.title = "Zone Durations (min)";
-        programZonesScrollList.title_text_size = 2;
-        programZonesScrollList.title_text_color = COLOR_RGB565_YELLOW;
-        programZonesScrollList.show_back_button = true;
+        cycleZonesScrollList.data_source = currentProg->zoneDurations;
+        cycleZonesScrollList.num_items = ZONE_COUNT;
+        cycleZonesScrollList.selected_index_ptr = &selectedCycleZoneIndex;
+        cycleZonesScrollList.format_string = "Zone %d: %d min";
+        cycleZonesScrollList.x = 0;
+        cycleZonesScrollList.y = 150;
+        cycleZonesScrollList.width = 320;
+        cycleZonesScrollList.height = 95;
+        cycleZonesScrollList.item_text_size = 2;
+        cycleZonesScrollList.item_text_color = COLOR_RGB565_LGRAY;
+        cycleZonesScrollList.selected_item_text_color = COLOR_RGB565_WHITE;
+        cycleZonesScrollList.selected_item_bg_color = COLOR_RGB565_BLUE;
+        cycleZonesScrollList.list_bg_color = COLOR_RGB565_BLACK;
+        cycleZonesScrollList.title = "Zone Durations (min)";
+        cycleZonesScrollList.title_text_size = 2;
+        cycleZonesScrollList.title_text_color = COLOR_RGB565_YELLOW;
+        cycleZonesScrollList.show_back_button = true;
         
-        setupScrollableListMetrics(programZonesScrollList, screen);
+        setupScrollableListMetrics(cycleZonesScrollList, screen);
         
         DEBUG_PRINTF("Entering %s configuration\n", progLabel);
-        drawProgramConfigMenu(progLabel, *currentProg);
+        drawCycleConfigMenu(progLabel, *currentProg);
       }
       break;
     case STATE_RUNNING_ZONE:
       DEBUG_PRINTLN("Entering running zone state");
       drawRunningZoneMenu();
       break;
-    case STATE_PROGRAM_RUNNING:
-      DEBUG_PRINTLN("Entering program running state");
-      drawProgramRunningMenu();
+    case STATE_CYCLE_RUNNING:
+      DEBUG_PRINTLN("Entering cycle running state");
+      drawCycleRunningMenu();
       break;
     case STATE_TEST_MODE:
       DEBUG_PRINTLN("Starting test mode");
@@ -1002,18 +987,18 @@ void drawMainMenu() {
 }
 
 // -----------------------------------------------------------------------------
-//                           PROGRAMS MENU DRAWING
+//                           CYCLES MENU DRAWING
 // -----------------------------------------------------------------------------
-void drawProgramsMenu() {
-  drawScrollableList(screen, programsMenuScrollList, true);
+void drawCyclesMenu() {
+  drawScrollableList(screen, cyclesMenuScrollList, true);
 }
 
 // -----------------------------------------------------------------------------
-//                           PROGRAM SUB-MENU DRAWING
+//                           CYCLE SUB-MENU DRAWING
 // -----------------------------------------------------------------------------
-void drawProgramSubMenu(const char* label) {
-  programSubMenuScrollList.title = label;
-  drawScrollableList(screen, programSubMenuScrollList, true);
+void drawCycleSubMenu(const char* label) {
+  cycleSubMenuScrollList.title = label;
+  drawScrollableList(screen, cycleSubMenuScrollList, true);
 }
 
 // -----------------------------------------------------------------------------
@@ -1055,7 +1040,7 @@ void updateSoftwareClock() {
     incrementOneSecond();
 
     // If in main menu, re-draw date/time so it remains fresh
-    if (currentState == STATE_MAIN_MENU || currentState == STATE_PROGRAM_RUNNING || currentState == STATE_RUNNING_ZONE) {
+    if (currentState == STATE_MAIN_MENU || currentState == STATE_CYCLE_RUNNING || currentState == STATE_RUNNING_ZONE) {
       // Overwrite old area
       screen.fillRect(10, 10, 300, 20, COLOR_RGB565_BLACK);
       // Re-draw date/time
@@ -1284,11 +1269,11 @@ void stopAllActivity() { // Renamed from stopZone
   zoneDuration = 0;
   isTimedRun = false;
 
-  // Reset timer variables for program run
-  currentRunningProgram = -1;
-  currentProgramZoneIndex = -1;
-  programZoneStartTime = 0;
-  programInterZoneDelayStartTime = 0;
+  // Reset timer variables for cycle run
+  currentRunningCycle = -1;
+  currentCycleZoneIndex = -1;
+  cycleZoneStartTime = 0;
+  cycleInterZoneDelayStartTime = 0;
   inInterZoneDelay = false;
   
   currentOperation = OP_NONE; // No operation is active
@@ -1396,9 +1381,9 @@ void handleSetSystemTimeButton() {
 }
 
 // -----------------------------------------------------------------------------
-//          PROGRAM A / B / C CONFIG EDIT (ENHANCED)
+//          CYCLE A / B / C CONFIG EDIT (ENHANCED)
 // -----------------------------------------------------------------------------
-void drawProgramConfigMenu(const char* label, ProgramConfig& cfg) {
+void drawCycleConfigMenu(const char* label, CycleConfig& cfg) {
   screen.fillScreen(COLOR_RGB565_BLACK);
 
   screen.setTextSize(2);
@@ -1412,19 +1397,19 @@ void drawProgramConfigMenu(const char* label, ProgramConfig& cfg) {
   uint16_t color;
 
   // Field 0: Enabled
-  color = (programEditFieldIndex == 0) ? COLOR_RGB565_WHITE : COLOR_RGB565_LGRAY;
+  color = (cycleEditFieldIndex == 0) ? COLOR_RGB565_WHITE : COLOR_RGB565_LGRAY;
   screen.setTextColor(color);
   screen.setCursor(10, 40);
   screen.printf("Enabled: %s", cfg.enabled ? "YES" : "NO");
 
   // Field 1 & 2: Start Time
-  color = (programEditFieldIndex >= 1 && programEditFieldIndex <= 2) ? COLOR_RGB565_WHITE : COLOR_RGB565_LGRAY;
+  color = (cycleEditFieldIndex >= 1 && cycleEditFieldIndex <= 2) ? COLOR_RGB565_WHITE : COLOR_RGB565_LGRAY;
   screen.setTextColor(color);
   screen.setCursor(10, 65);
   screen.printf("Start Time: %02d:%02d", cfg.startTime.hour, cfg.startTime.minute);
 
   // Field 3: Inter-Zone Delay
-  color = (programEditFieldIndex == 3) ? COLOR_RGB565_WHITE : COLOR_RGB565_LGRAY;
+  color = (cycleEditFieldIndex == 3) ? COLOR_RGB565_WHITE : COLOR_RGB565_LGRAY;
   screen.setTextColor(color);
   screen.setCursor(10, 90);
   screen.printf("Inter-Zone Delay: %d min", cfg.interZoneDelay);
@@ -1437,15 +1422,15 @@ void drawProgramConfigMenu(const char* label, ProgramConfig& cfg) {
   const char* dayLabels[] = {"Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"};
   for (int i = 0; i < 7; i++) {
     int xPos = 10 + i * 45;
-    color = (programEditFieldIndex == (4 + i)) ? COLOR_RGB565_WHITE : COLOR_RGB565_LGRAY;
+    color = (cycleEditFieldIndex == (4 + i)) ? COLOR_RGB565_WHITE : COLOR_RGB565_LGRAY;
     screen.setTextColor(color);
     screen.setCursor(xPos, 130);
     screen.printf("%s %c", dayLabels[i], (cfg.daysActive & (1 << i)) ? '*' : ' ');
   }
 
   // --- Draw scrollable list for Zone Durations ---
-  bool is_zone_list_active = (programEditFieldIndex >= 11);
-  drawScrollableList(screen, programZonesScrollList, is_zone_list_active);
+  bool is_zone_list_active = (cycleEditFieldIndex >= 11);
+  drawScrollableList(screen, cycleZonesScrollList, is_zone_list_active);
 
 
   // --- Instructions ---
@@ -1456,24 +1441,24 @@ void drawProgramConfigMenu(const char* label, ProgramConfig& cfg) {
   screen.println("Long press to exit.");
 }
 
-void handleProgramEditEncoder(long diff, ProgramConfig &cfg, const char* progLabel) {
+void handleCycleEditEncoder(long diff, CycleConfig &cfg, const char* progLabel) {
   // New field indices: 0=enabled, 1=hour, 2=minute, 3=interZoneDelay, 4-10=days, 11=zone list
-  if (programEditFieldIndex == 11 && editingProgramZone) {
+  if (cycleEditFieldIndex == 11 && editingCycleZone) {
     // We are editing a specific zone's duration
-    int selected_zone_index = *programZonesScrollList.selected_index_ptr;
-    if (selected_zone_index < programZonesScrollList.num_items) {
+    int selected_zone_index = *cycleZonesScrollList.selected_index_ptr;
+    if (selected_zone_index < cycleZonesScrollList.num_items) {
       int newDur = cfg.zoneDurations[selected_zone_index] + diff;
       if (newDur < 0)   newDur = 120;
       if (newDur > 120) newDur = 0;
       cfg.zoneDurations[selected_zone_index] = newDur;
     }
-  } else if (programEditFieldIndex == 11) {
+  } else if (cycleEditFieldIndex == 11) {
     // We are navigating the zone list
-    handleScrollableListInput(programZonesScrollList, diff);
+    handleScrollableListInput(cycleZonesScrollList, diff);
   }
   else {
     // Handle non-list fields
-    switch (programEditFieldIndex) {
+    switch (cycleEditFieldIndex) {
       case 0: // Enabled
         if (diff != 0) cfg.enabled = !cfg.enabled;
         break;
@@ -1490,7 +1475,7 @@ void handleProgramEditEncoder(long diff, ProgramConfig &cfg, const char* progLab
         break;
       case 4: case 5: case 6: case 7: case 8: case 9: case 10: // Days Active
         {
-          uint8_t dayBit = (1 << (programEditFieldIndex - 4));
+          uint8_t dayBit = (1 << (cycleEditFieldIndex - 4));
           if (diff != 0) { // Only toggle on movement
             cfg.daysActive ^= dayBit; // Toggle the bit
           }
@@ -1499,24 +1484,24 @@ void handleProgramEditEncoder(long diff, ProgramConfig &cfg, const char* progLab
     }
   }
   
-  drawProgramConfigMenu(progLabel, cfg);
+  drawCycleConfigMenu(progLabel, cfg);
 }
 
-void handleProgramEditButton(ProgramConfig &cfg, UIState thisState, const char* progLabel) {
+void handleCycleEditButton(CycleConfig &cfg, UIState thisState, const char* progLabel) {
   // If we are in the zone list (field index 11)
-  if (programEditFieldIndex == 11) {
-    int selected_zone_index = *programZonesScrollList.selected_index_ptr;
+  if (cycleEditFieldIndex == 11) {
+    int selected_zone_index = *cycleZonesScrollList.selected_index_ptr;
 
     // If the "Back" button is selected, go back.
-    if (selected_zone_index == programZonesScrollList.num_items) {
-      programEditFieldIndex = 0; // Reset for next time
-      editingProgramZone = false;
+    if (selected_zone_index == cycleZonesScrollList.num_items) {
+      cycleEditFieldIndex = 0; // Reset for next time
+      editingCycleZone = false;
       goBack();
       return;
     }
 
     // Toggle editing mode for the selected zone
-    editingProgramZone = !editingProgramZone;
+    editingCycleZone = !editingCycleZone;
 
     // If we are NOT editing anymore, it means we've confirmed the value.
     // Let's just stay in the list to allow editing another zone.
@@ -1525,77 +1510,77 @@ void handleProgramEditButton(ProgramConfig &cfg, UIState thisState, const char* 
 
   } else {
     // Otherwise, advance to the next field
-    programEditFieldIndex++;
+    cycleEditFieldIndex++;
   }
   
   // If we've moved past the simple fields (0-10), we enter the zone list editing mode (11).
-  if (programEditFieldIndex > 10) {
-    programEditFieldIndex = 11; // Cap at 11
+  if (cycleEditFieldIndex > 10) {
+    cycleEditFieldIndex = 11; // Cap at 11
   }
   
-  drawProgramConfigMenu(progLabel, cfg);
+  drawCycleConfigMenu(progLabel, cfg);
 }
 
-void startProgramRun(int programIndex, ActiveOperationType type) {
-  DEBUG_PRINTF("=== STARTING PROGRAM %d (%s) ===\n", programIndex, programs[programIndex]->name);
+void startCycleRun(int cycleIndex, ActiveOperationType type) {
+  DEBUG_PRINTF("=== STARTING CYCLE %d (%s) ===\n", cycleIndex, cycles[cycleIndex]->name);
   stopAllActivity(); // Ensure only one operation runs at a time
 
-  currentRunningProgram = programIndex;
-  currentProgramZoneIndex = 0; // Start with the first zone
-  programZoneStartTime = millis();
+  currentRunningCycle = cycleIndex;
+  currentCycleZoneIndex = 0; // Start with the first zone
+  cycleZoneStartTime = millis();
   inInterZoneDelay = false;
-  currentOperation = type; // OP_MANUAL_PROGRAM or OP_SCHEDULED_PROGRAM
+  currentOperation = type; // OP_MANUAL_CYCLE or OP_SCHEDULED_CYCLE
 
-  DEBUG_PRINTF("Program %s started. Current operation: %d\n", programs[programIndex]->name, currentOperation);
-  navigateTo(STATE_PROGRAM_RUNNING);
+  DEBUG_PRINTF("Cycle %s started. Current operation: %d\n", cycles[cycleIndex]->name, currentOperation);
+  navigateTo(STATE_CYCLE_RUNNING);
 }
 
-void updateProgramRun() {
-  if (currentRunningProgram == -1 || currentOperation == OP_NONE) return;
+void updateCycleRun() {
+  if (currentRunningCycle == -1 || currentOperation == OP_NONE) return;
 
-  ProgramConfig* cfg = programs[currentRunningProgram];
+  CycleConfig* cfg = cycles[currentRunningCycle];
   unsigned long currentTime = millis();
 
   if (inInterZoneDelay) {
-    unsigned long elapsedDelay = currentTime - programInterZoneDelayStartTime;
+    unsigned long elapsedDelay = currentTime - cycleInterZoneDelayStartTime;
     if (elapsedDelay >= (unsigned long)cfg->interZoneDelay * 60000) { // Delay in minutes
       inInterZoneDelay = false;
-      currentProgramZoneIndex++; // Move to next zone
-      programZoneStartTime = currentTime; // Reset timer for new zone
-      DEBUG_PRINTF("Inter-zone delay finished. Moving to zone %d\n", currentProgramZoneIndex + 1);
+      currentCycleZoneIndex++; // Move to next zone
+      cycleZoneStartTime = currentTime; // Reset timer for new zone
+      DEBUG_PRINTF("Inter-zone delay finished. Moving to zone %d\n", currentCycleZoneIndex + 1);
     }
   }
 
   // Check if current zone needs to be activated or timed out
   if (!inInterZoneDelay) {
-    if (currentProgramZoneIndex < ZONE_COUNT) {
-      int zoneToRun = currentProgramZoneIndex + 1; // Zones are 1-indexed
-      unsigned long zoneRunDuration = (unsigned long)cfg->zoneDurations[currentProgramZoneIndex] * 60000; // Minutes to milliseconds
+    if (currentCycleZoneIndex < ZONE_COUNT) {
+      int zoneToRun = currentCycleZoneIndex + 1; // Zones are 1-indexed
+      unsigned long zoneRunDuration = (unsigned long)cfg->zoneDurations[currentCycleZoneIndex] * 60000; // Minutes to milliseconds
 
       // Activate zone and pump if not already active
       if (!relayStates[zoneToRun] || !relayStates[PUMP_IDX]) {
         stopAllActivity(); // Ensure clean state before activating
-        DEBUG_PRINTF("Activating program zone %d (%s) and pump\n", zoneToRun, relayLabels[zoneToRun]);
+        DEBUG_PRINTF("Activating cycle zone %d (%s) and pump\n", zoneToRun, relayLabels[zoneToRun]);
         relayStates[zoneToRun] = true;
         digitalWrite(relayPins[zoneToRun], HIGH);
         relayStates[PUMP_IDX] = true;
         digitalWrite(relayPins[PUMP_IDX], HIGH);
-        programZoneStartTime = currentTime; // Ensure timer starts when relays are actually on
+        cycleZoneStartTime = currentTime; // Ensure timer starts when relays are actually on
       }
 
-      unsigned long elapsedZoneTime = currentTime - programZoneStartTime;
+      unsigned long elapsedZoneTime = currentTime - cycleZoneStartTime;
       if (elapsedZoneTime >= zoneRunDuration) {
-        DEBUG_PRINTF("Program %s, Zone %d finished. Starting inter-zone delay.\n", cfg->name, zoneToRun);
+        DEBUG_PRINTF("Cycle %s, Zone %d finished. Starting inter-zone delay.\n", cfg->name, zoneToRun);
         // Turn off current zone, but keep pump on for delay if needed
         relayStates[zoneToRun] = false;
         digitalWrite(relayPins[zoneToRun], LOW);
         
         inInterZoneDelay = true;
-        programInterZoneDelayStartTime = currentTime;
+        cycleInterZoneDelayStartTime = currentTime;
       }
     } else {
-      // All zones in the program are complete
-      DEBUG_PRINTF("Program %s completed.\n", cfg->name);
+      // All zones in the cycle are complete
+      DEBUG_PRINTF("Cycle %s completed.\n", cfg->name);
       stopAllActivity();
       navigateTo(STATE_MAIN_MENU);
     }
@@ -1604,39 +1589,39 @@ void updateProgramRun() {
   static unsigned long lastDisplayUpdate = 0;
   if (millis() - lastDisplayUpdate > 5000) {
     lastDisplayUpdate = millis();
-    drawProgramRunningMenu();
+    drawCycleRunningMenu();
   }
 }
 
-void drawProgramRunningMenu() {
+void drawCycleRunningMenu() {
   screen.fillScreen(COLOR_RGB565_BLACK);
 
   screen.setTextSize(2);
   screen.setTextColor(COLOR_RGB565_YELLOW);
   screen.setCursor(10, 10);
-  screen.println("Program Running");
+  screen.println("Cycle Running");
 
   drawDateTimeComponent(screen, 10, 10, currentDateTime, getCurrentDayOfWeek());
 
-  if (currentRunningProgram != -1) {
-    ProgramConfig* cfg = programs[currentRunningProgram];
+  if (currentRunningCycle != -1) {
+    CycleConfig* cfg = cycles[currentRunningCycle];
     screen.setTextColor(COLOR_RGB565_GREEN);
     screen.setCursor(10, 80);
-    screen.printf("Program: %s", cfg->name);
+    screen.printf("Cycle: %s", cfg->name);
 
     if (inInterZoneDelay) {
       screen.setTextColor(COLOR_RGB565_CYAN);
       screen.setCursor(10, 110);
-      unsigned long elapsedDelay = (millis() - programInterZoneDelayStartTime) / 1000;
+      unsigned long elapsedDelay = (millis() - cycleInterZoneDelayStartTime) / 1000;
       unsigned long remainingDelay = (unsigned long)cfg->interZoneDelay * 60 - elapsedDelay;
       screen.printf("Delay: %02lu:%02lu", remainingDelay / 60, remainingDelay % 60);
       screen.setCursor(10, 140);
       screen.setTextColor(COLOR_RGB565_WHITE);
       screen.println("Waiting for next zone...");
-    } else if (currentProgramZoneIndex < ZONE_COUNT) {
-      int zoneToRun = currentProgramZoneIndex + 1;
-      unsigned long zoneRunDuration = (unsigned long)cfg->zoneDurations[currentProgramZoneIndex] * 60000;
-      unsigned long elapsedZoneTime = millis() - programZoneStartTime;
+    } else if (currentCycleZoneIndex < ZONE_COUNT) {
+      int zoneToRun = currentCycleZoneIndex + 1;
+      unsigned long zoneRunDuration = (unsigned long)cfg->zoneDurations[currentCycleZoneIndex] * 60000;
+      unsigned long elapsedZoneTime = millis() - cycleZoneStartTime;
       unsigned long remainingZoneTime = (zoneRunDuration - elapsedZoneTime) / 1000;
 
       screen.setTextColor(COLOR_RGB565_CYAN);
@@ -1647,7 +1632,7 @@ void drawProgramRunningMenu() {
     } else {
       screen.setTextColor(COLOR_RGB565_GREEN);
       screen.setCursor(10, 110);
-      screen.println("Program Finishing...");
+      screen.println("Cycle Finishing...");
     }
 
     screen.setCursor(10, 170);
@@ -1671,12 +1656,12 @@ void drawProgramRunningMenu() {
   } else {
     screen.setTextColor(COLOR_RGB565_RED);
     screen.setCursor(10, 80);
-    screen.println("No Program Active");
+    screen.println("No Cycle Active");
   }
 
   screen.setTextColor(COLOR_RGB565_YELLOW);
   screen.setCursor(10, 300);
-  screen.println("Press button to stop program");
+  screen.println("Press button to stop cycle");
 }
 
 // -----------------------------------------------------------------------------

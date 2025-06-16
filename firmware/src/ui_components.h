@@ -65,15 +65,38 @@ struct ScrollableList {
     int list_items_area_height;   // Height available for just the items
     int max_items_in_view;        // Max items that can be shown at once
     int top_visible_index;        // Index of the item displayed at the top of the list area
+    bool dirty;                   // Flag to indicate if the component needs to be redrawn
 };
 
-// Helper functions for the scrollable list
-void setupScrollableListMetrics(ScrollableList& list, DFRobot_ST7789_240x320_HW_SPI& screen);
+// -----------------------------------------------------------------------------
+//                           Date/Time Component
+// -----------------------------------------------------------------------------
+struct DateTimeComponent {
+    // Data Source
+    const SystemDateTime* dt;     // Pointer to the system's date/time structure
+    const DayOfWeek* dow;         // Pointer to the system's day of the week
+
+    // Display Properties
+    int x, y;                     // Top-left corner of the component
+
+    // State
+    bool dirty;                   // Flag to indicate if the component needs to be redrawn
+};
+
+
+// -----------------------------------------------------------------------------
+//                           Component Helper Functions
+// -----------------------------------------------------------------------------
+
+// Scrollable List
+void setupScrollableList(ScrollableList& list, DFRobot_ST7789_240x320_HW_SPI& screen);
 void drawScrollableList(DFRobot_ST7789_240x320_HW_SPI& screen, ScrollableList& list, bool is_active);
 void handleScrollableListInput(ScrollableList& list, long encoder_diff);
 
 // Date/Time Display Component
-void drawDateTimeComponent(DFRobot_ST7789_240x320_HW_SPI& screen, int x, int y, const SystemDateTime& dt, DayOfWeek dow);
+void setupDateTimeComponent(DateTimeComponent& comp, int x, int y, const SystemDateTime* dt, const DayOfWeek* dow);
+void drawDateTimeComponent(DFRobot_ST7789_240x320_HW_SPI& screen, DateTimeComponent& comp);
+void updateDateTimeComponent(DateTimeComponent& comp, const SystemDateTime* dt, const DayOfWeek* dow);
 
 
 #endif // UI_COMPONENTS_H

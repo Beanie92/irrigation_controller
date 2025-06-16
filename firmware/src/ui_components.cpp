@@ -1,6 +1,7 @@
 #include "ui_components.h"
 #include <Arduino.h>
 
+
 // Helper function to set up calculated metrics for a scrollable list
 void setupScrollableListMetrics(ScrollableList& list, DFRobot_ST7789_240x320_HW_SPI& screen) {
     // Calculate item render height (text height + padding)
@@ -57,7 +58,6 @@ void drawScrollableList(DFRobot_ST7789_240x320_HW_SPI& screen, ScrollableList& l
 
     // Draw visible menu items
     screen.setTextSize(list.item_text_size);
-    int total_items = list.num_items + (list.show_back_button ? 1 : 0);
 
     for (int i = 0; i < list.max_items_in_view; i++) {
         int current_item_index = list.top_visible_index + i;
@@ -78,16 +78,18 @@ void drawScrollableList(DFRobot_ST7789_240x320_HW_SPI& screen, ScrollableList& l
         bool is_back_button_item = list.show_back_button && (current_item_index == list.num_items);
         if (is_back_button_item) {
             screen.println("<- Back");
-        } else if (list.format_string != nullptr && list.data_source != nullptr) {
-            // Data-driven list (e.g., for zone durations)
-            char buffer[50];
-            // Assuming data_source is an array of uint16_t as per current usage
-            uint16_t* data_array = static_cast<uint16_t*>(list.data_source);
-            sprintf(buffer, list.format_string, current_item_index + 1, data_array[current_item_index]);
-            screen.println(buffer);
-        } else if (list.items != nullptr) {
-            // Simple string array list
-            screen.println(list.items[current_item_index]);
+        } else if (current_item_index < list.num_items) { // Ensure index is within bounds
+            if (list.format_string != nullptr && list.data_source != nullptr) {
+                // Data-driven list (e.g., for zone durations)
+                char buffer[50];
+                // Assuming data_source is an array of uint16_t as per current usage
+                uint16_t* data_array = static_cast<uint16_t*>(list.data_source);
+                sprintf(buffer, list.format_string, current_item_index + 1, data_array[current_item_index]);
+                screen.println(buffer);
+            } else if (list.items != nullptr) {
+                // Simple string array list
+                screen.println(list.items[current_item_index]);
+            }
         }
     }
 
@@ -109,6 +111,8 @@ void drawScrollableList(DFRobot_ST7789_240x320_HW_SPI& screen, ScrollableList& l
 // Helper function to handle encoder input for a scrollable list
 void handleScrollableListInput(ScrollableList& list, long encoder_diff) {
     int total_items = list.num_items + (list.show_back_button ? 1 : 0);
+    if (total_items == 0) return; // Nothing to do if the list is empty
+
     int new_selected_index = *list.selected_index_ptr + encoder_diff;
 
     // Implement wrap-around for selection
@@ -118,6 +122,7 @@ void handleScrollableListInput(ScrollableList& list, long encoder_diff) {
         new_selected_index = 0;
     }
     *list.selected_index_ptr = new_selected_index;
+
 }
 
 // -----------------------------------------------------------------------------
