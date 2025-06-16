@@ -56,9 +56,11 @@ void drawScrollableList(DFRobot_ST7789_240x320_HW_SPI& screen, ScrollableList& l
 
     // Draw visible menu items
     screen.setTextSize(list.item_text_size);
+    int total_items = list.num_items + (list.show_back_button ? 1 : 0);
+
     for (int i = 0; i < list.max_items_in_view; i++) {
         int current_item_index = list.top_visible_index + i;
-        if (current_item_index >= list.num_items) break; // Don't draw past the end
+        if (current_item_index >= total_items) break; // Don't draw past the end
 
         int yPos = list.list_items_area_y + (i * list.item_render_height);
         
@@ -69,10 +71,13 @@ void drawScrollableList(DFRobot_ST7789_240x320_HW_SPI& screen, ScrollableList& l
         } else {
             screen.setTextColor(list.item_text_color);
         }
-        screen.setCursor(list.x + 10, yPos + 2); // Small padding from top of item row
+        screen.setCursor(list.x + 20, yPos + 5); // Small padding from top of item row
         
         // Render item text
-        if (list.format_string != nullptr && list.data_source != nullptr) {
+        bool is_back_button_item = list.show_back_button && (current_item_index == list.num_items);
+        if (is_back_button_item) {
+            screen.println("<- Back");
+        } else if (list.format_string != nullptr && list.data_source != nullptr) {
             char buffer[50];
             uint16_t* durations = static_cast<uint16_t*>(list.data_source);
             sprintf(buffer, list.format_string, current_item_index + 1, durations[current_item_index]);
@@ -99,12 +104,13 @@ void drawScrollableList(DFRobot_ST7789_240x320_HW_SPI& screen, ScrollableList& l
 
 // Helper function to handle encoder input for a scrollable list
 void handleScrollableListInput(ScrollableList& list, long encoder_diff) {
+    int total_items = list.num_items + (list.show_back_button ? 1 : 0);
     int new_selected_index = *list.selected_index_ptr + encoder_diff;
 
     // Implement wrap-around for selection
     if (new_selected_index < 0) {
-        new_selected_index = list.num_items - 1;
-    } else if (new_selected_index >= list.num_items) {
+        new_selected_index = total_items - 1;
+    } else if (new_selected_index >= total_items) {
         new_selected_index = 0;
     }
     *list.selected_index_ptr = new_selected_index;

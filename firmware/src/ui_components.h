@@ -57,6 +57,7 @@ struct ScrollableList {
     int title_text_size;
     uint16_t title_text_color;
     int title_area_height;        // Calculated or fixed height for the title area
+    bool show_back_button;
 
     // Calculated & State Variables (managed internally by helper functions)
     int item_render_height;       // Calculated height of a single item row (font + padding)

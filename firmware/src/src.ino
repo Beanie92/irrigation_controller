@@ -87,27 +87,28 @@ enum ActiveOperationType {
   OP_SCHEDULED_PROGRAM
 };
 
-enum ProgramState {
+enum UIState {
   STATE_MAIN_MENU,
   STATE_MANUAL_RUN,        
-  STATE_PROGRAMS_MENU, // New state for the nested programs menu
-  STATE_PROGRAM_A_MENU, // Submenu for Program A options
-  STATE_PROGRAM_B_MENU, // Submenu for Program B options
-  STATE_PROGRAM_C_MENU, // Submenu for Program C options
+  STATE_PROGRAMS_MENU,
+  STATE_PROGRAM_A_MENU,
+  STATE_PROGRAM_B_MENU,
+  STATE_PROGRAM_C_MENU,
   STATE_SETTINGS,
   STATE_SET_SYSTEM_TIME,
   STATE_WIFI_SETUP,
   STATE_WIFI_RESET,
   STATE_SYSTEM_INFO,
-  STATE_PROG_A, // For configuring Program A
-  STATE_PROG_B, // For configuring Program B
-  STATE_PROG_C, // For configuring Program C
+  STATE_PROG_A,
+  STATE_PROG_B,
+  STATE_PROG_C,
   STATE_RUNNING_ZONE,
-  STATE_PROGRAM_RUNNING, // New state for when a program (A, B, C) is active
+  STATE_PROGRAM_RUNNING,
   STATE_TEST_MODE
 };
 
-ProgramState currentState = STATE_MAIN_MENU;
+UIState currentState = STATE_MAIN_MENU;
+UIState previousState = STATE_MAIN_MENU;
 ActiveOperationType currentOperation = OP_NONE; // Track what kind of operation is active
 
 // Main Menu Items
@@ -121,33 +122,30 @@ const char* mainMenuLabels[MAIN_MENU_ITEMS] = {
 int selectedMainMenuIndex = 0; 
 
 // Programs Menu Items (lists Program A, B, C)
-static const int PROGRAMS_MENU_ITEMS = 4; // A, B, C, Back
+static const int PROGRAMS_MENU_ITEMS = 3; // A, B, C
 const char* programsMenuLabels[PROGRAMS_MENU_ITEMS] = {
   "Program A",
   "Program B",
-  "Program C",
-  "Back to Main Menu"
+  "Program C"
 };
 int selectedProgramsMenuIndex = 0;
 
 // Individual Program Sub-Menu Items (Run Now, Configure)
-static const int PROGRAM_SUB_MENU_ITEMS = 3; // Run Now, Configure, Back
+static const int PROGRAM_SUB_MENU_ITEMS = 2; // Run Now, Configure
 const char* programSubMenuLabels[PROGRAM_SUB_MENU_ITEMS] = {
   "Run Now",
-  "Configure",
-  "Back to Programs"
+  "Configure"
 };
 int selectedProgramSubMenuIndex = 0;
 ScrollableList programSubMenuScrollList;
 
 // Settings Menu Items
-static const int SETTINGS_MENU_ITEMS = 5;
+static const int SETTINGS_MENU_ITEMS = 4;
 const char* settingsMenuLabels[SETTINGS_MENU_ITEMS] = {
   "WiFi Setup",
   "Set Time Manually",
   "WiFi Reset",
-  "System Info",
-  "Back to Main Menu"
+  "System Info"
 };
 int selectedSettingsMenuIndex = 0;
 ScrollableList settingsMenuScrollList;
@@ -305,7 +303,8 @@ void drawLogo();
 void drawMainMenu();
 void drawProgramsMenu();
 void drawProgramSubMenu(const char* label);
-void enterState(ProgramState newState);
+void navigateTo(UIState newState);
+void goBack();
 
 void updateSoftwareClock();
 DayOfWeek getCurrentDayOfWeek();
@@ -324,7 +323,7 @@ void handleSetSystemTimeButton();
 // Program A/B/C
 void drawProgramConfigMenu(const char* label, ProgramConfig& cfg);
 void handleProgramEditEncoder(long diff, ProgramConfig &cfg, const char* progLabel);
-void handleProgramEditButton(ProgramConfig &cfg, ProgramState thisState, const char* progLabel);
+void handleProgramEditButton(ProgramConfig &cfg, UIState thisState, const char* progLabel);
 void startProgramRun(int programIndex, ActiveOperationType type);
 void updateProgramRun();
 void drawProgramRunningMenu();
@@ -400,7 +399,7 @@ void setup() {
 
   // Start in main menu (WiFi setup is now optional via Settings menu)
   DEBUG_PRINTLN("Entering main menu state...");
-  enterState(STATE_MAIN_MENU);
+  navigateTo(STATE_MAIN_MENU);
   DEBUG_PRINTLN("=== STARTUP COMPLETE ===");
 }
 
@@ -459,7 +458,7 @@ void loop() {
       if (elapsed >= zoneDuration) {
         DEBUG_PRINTLN("Zone timer expired - stopping zone");
         stopAllActivity();
-        enterState(STATE_MAIN_MENU);
+        navigateTo(STATE_MAIN_MENU);
       }
     }
   } else if (currentState == STATE_PROGRAM_RUNNING) {
@@ -605,102 +604,73 @@ void handleButtonPress() {
         case STATE_MAIN_MENU:
           DEBUG_PRINTF("Main menu item selected: %d (%s)\n", selectedMainMenuIndex, mainMenuLabels[selectedMainMenuIndex]);
           switch (selectedMainMenuIndex) {
-            case 0: // Manual Run
-              enterState(STATE_MANUAL_RUN);
-              break;
-            case 1: // Programs
-              enterState(STATE_PROGRAMS_MENU);
-              break;
-            case 2: // Test Mode
-              enterState(STATE_TEST_MODE);
-              break;
-            case 3: // Settings
-              enterState(STATE_SETTINGS);
-              break;
+            case 0: navigateTo(STATE_MANUAL_RUN); break;
+            case 1: navigateTo(STATE_PROGRAMS_MENU); break;
+            case 2: navigateTo(STATE_TEST_MODE); break;
+            case 3: navigateTo(STATE_SETTINGS); break;
           }
           break;
 
         case STATE_PROGRAMS_MENU:
           DEBUG_PRINTF("Programs menu item selected: %d (%s)\n", selectedProgramsMenuIndex, programsMenuLabels[selectedProgramsMenuIndex]);
-          switch (selectedProgramsMenuIndex) {
-            case 0: // Program A
-              enterState(STATE_PROGRAM_A_MENU);
-              break;
-            case 1: // Program B
-              enterState(STATE_PROGRAM_B_MENU);
-              break;
-            case 2: // Program C
-              enterState(STATE_PROGRAM_C_MENU);
-              break;
-            case 3: // Back to Main Menu
-              enterState(STATE_MAIN_MENU);
-              break;
+          if (selectedProgramsMenuIndex == PROGRAMS_MENU_ITEMS) { // Back button
+            goBack();
+          } else {
+            switch (selectedProgramsMenuIndex) {
+              case 0: navigateTo(STATE_PROGRAM_A_MENU); break;
+              case 1: navigateTo(STATE_PROGRAM_B_MENU); break;
+              case 2: navigateTo(STATE_PROGRAM_C_MENU); break;
+            }
           }
           break;
 
         case STATE_PROGRAM_A_MENU:
           DEBUG_PRINTF("Program A sub-menu item selected: %d (%s)\n", selectedProgramSubMenuIndex, programSubMenuLabels[selectedProgramSubMenuIndex]);
-          switch (selectedProgramSubMenuIndex) {
-            case 0: // Run Now
-              startProgramRun(0, OP_MANUAL_PROGRAM); // Program A is index 0
-              break;
-            case 1: // Configure
-              enterState(STATE_PROG_A);
-              break;
-            case 2: // Back to Programs
-              enterState(STATE_PROGRAMS_MENU);
-              break;
+          if (selectedProgramSubMenuIndex == PROGRAM_SUB_MENU_ITEMS) { // Back button
+            goBack();
+          } else {
+            switch (selectedProgramSubMenuIndex) {
+              case 0: startProgramRun(0, OP_MANUAL_PROGRAM); break;
+              case 1: navigateTo(STATE_PROG_A); break;
+            }
           }
           break;
 
         case STATE_PROGRAM_B_MENU:
           DEBUG_PRINTF("Program B sub-menu item selected: %d (%s)\n", selectedProgramSubMenuIndex, programSubMenuLabels[selectedProgramSubMenuIndex]);
-          switch (selectedProgramSubMenuIndex) {
-            case 0: // Run Now
-              startProgramRun(1, OP_MANUAL_PROGRAM); // Program B is index 1
-              break;
-            case 1: // Configure
-              enterState(STATE_PROG_B);
-              break;
-            case 2: // Back to Programs
-              enterState(STATE_PROGRAMS_MENU);
-              break;
+          if (selectedProgramSubMenuIndex == PROGRAM_SUB_MENU_ITEMS) { // Back button
+            goBack();
+          } else {
+            switch (selectedProgramSubMenuIndex) {
+              case 0: startProgramRun(1, OP_MANUAL_PROGRAM); break;
+              case 1: navigateTo(STATE_PROG_B); break;
+            }
           }
           break;
 
         case STATE_PROGRAM_C_MENU:
           DEBUG_PRINTF("Program C sub-menu item selected: %d (%s)\n", selectedProgramSubMenuIndex, programSubMenuLabels[selectedProgramSubMenuIndex]);
-          switch (selectedProgramSubMenuIndex) {
-            case 0: // Run Now
-              startProgramRun(2, OP_MANUAL_PROGRAM); // Program C is index 2
-              break;
-            case 1: // Configure
-              enterState(STATE_PROG_C);
-              break;
-            case 2: // Back to Programs
-              enterState(STATE_PROGRAMS_MENU);
-              break;
+          if (selectedProgramSubMenuIndex == PROGRAM_SUB_MENU_ITEMS) { // Back button
+            goBack();
+          } else {
+            switch (selectedProgramSubMenuIndex) {
+              case 0: startProgramRun(2, OP_MANUAL_PROGRAM); break;
+              case 1: navigateTo(STATE_PROG_C); break;
+            }
           }
           break;
 
         case STATE_SETTINGS:
           DEBUG_PRINTF("Settings menu item selected: %d (%s)\n", selectedSettingsMenuIndex, settingsMenuLabels[selectedSettingsMenuIndex]);
-          switch (selectedSettingsMenuIndex) {
-            case 0: // WiFi Setup
-              enterState(STATE_WIFI_SETUP);
-              break;
-            case 1: // Set Time Manually
-              enterState(STATE_SET_SYSTEM_TIME);
-              break;
-            case 2: // WiFi Reset
-              enterState(STATE_WIFI_RESET);
-              break;
-            case 3: // System Info
-              enterState(STATE_SYSTEM_INFO);
-              break;
-            case 4: // Back to Main Menu
-              enterState(STATE_MAIN_MENU);
-              break;
+          if (selectedSettingsMenuIndex == SETTINGS_MENU_ITEMS) { // Back button
+            goBack();
+          } else {
+            switch (selectedSettingsMenuIndex) {
+              case 0: navigateTo(STATE_WIFI_SETUP); break;
+              case 1: navigateTo(STATE_SET_SYSTEM_TIME); break;
+              case 2: navigateTo(STATE_WIFI_RESET); break;
+              case 3: navigateTo(STATE_SYSTEM_INFO); break;
+            }
           }
           break;
 
@@ -739,13 +709,13 @@ void handleButtonPress() {
         case STATE_PROGRAM_RUNNING:
           DEBUG_PRINTLN("Cancelling running zone/program");
           stopAllActivity();
-          enterState(STATE_MAIN_MENU);
+          navigateTo(STATE_MAIN_MENU);
           break;
 
         case STATE_TEST_MODE:
           DEBUG_PRINTLN("Cancelling test mode");
           stopTestMode();
-          enterState(STATE_MAIN_MENU);
+          navigateTo(STATE_MAIN_MENU);
           break;
 
         default:
@@ -762,7 +732,12 @@ void handleButtonPress() {
 // -----------------------------------------------------------------------------
 //                            STATE TRANSITIONS
 // -----------------------------------------------------------------------------
-void enterState(ProgramState newState) {
+void goBack() {
+  DEBUG_PRINTF("Going back from %d to %d\n", currentState, previousState);
+  navigateTo(previousState); // Navigate to the stored previous state
+}
+
+void navigateTo(UIState newState) {
   const char* stateNames[] = {
     "MAIN_MENU", "MANUAL_RUN", "PROGRAMS_MENU", "PROGRAM_A_MENU", "PROGRAM_B_MENU", "PROGRAM_C_MENU",
     "SETTINGS", "SET_SYSTEM_TIME", "WIFI_SETUP", "WIFI_RESET", "SYSTEM_INFO",
@@ -773,19 +748,19 @@ void enterState(ProgramState newState) {
     (currentState < sizeof(stateNames)/sizeof(stateNames[0])) ? stateNames[currentState] : "UNKNOWN",
     (newState < sizeof(stateNames)/sizeof(stateNames[0])) ? stateNames[newState] : "UNKNOWN");
   
+  previousState = currentState;
   currentState = newState;
   screen.fillScreen(COLOR_RGB565_BLACK);
 
   switch (currentState) {
     case STATE_MAIN_MENU:
-      // Initialize mainMenuScrollList
       mainMenuScrollList.items = mainMenuLabels;
       mainMenuScrollList.num_items = MAIN_MENU_ITEMS;
       mainMenuScrollList.selected_index_ptr = &selectedMainMenuIndex;
       mainMenuScrollList.x = 0;
-      mainMenuScrollList.y = 70; // Below date/time (10,10) and title (10,40)
-      mainMenuScrollList.width = 320; // Full screen width
-      mainMenuScrollList.height = 240 - 70; // Remaining screen height
+      mainMenuScrollList.y = 70;
+      mainMenuScrollList.width = 320;
+      mainMenuScrollList.height = 240 - 70;
       mainMenuScrollList.item_text_size = 2;
       mainMenuScrollList.item_text_color = COLOR_RGB565_LGRAY;
       mainMenuScrollList.selected_item_text_color = COLOR_RGB565_WHITE;
@@ -794,6 +769,7 @@ void enterState(ProgramState newState) {
       mainMenuScrollList.title = "Main Menu";
       mainMenuScrollList.title_text_size = 2;
       mainMenuScrollList.title_text_color = COLOR_RGB565_YELLOW;
+      mainMenuScrollList.show_back_button = false; // No back button on main menu
       setupScrollableListMetrics(mainMenuScrollList, screen);
       DEBUG_PRINTLN("Drawing main menu");
       drawMainMenu();
@@ -801,13 +777,13 @@ void enterState(ProgramState newState) {
     case STATE_MANUAL_RUN:
       selectedManualZoneIndex = 0;
       selectingDuration = false;
-      manualRunScrollList.items = &relayLabels[1]; // Skip "Pump"
+      manualRunScrollList.items = &relayLabels[1];
       manualRunScrollList.num_items = ZONE_COUNT;
       manualRunScrollList.selected_index_ptr = &selectedManualZoneIndex;
       manualRunScrollList.x = 0;
-      manualRunScrollList.y = 70;
+      manualRunScrollList.y = 0;
       manualRunScrollList.width = 320;
-      manualRunScrollList.height = 240 - 70;
+      manualRunScrollList.height = 240;
       manualRunScrollList.item_text_size = 2;
       manualRunScrollList.item_text_color = COLOR_RGB565_LGRAY;
       manualRunScrollList.selected_item_text_color = COLOR_RGB565_WHITE;
@@ -816,6 +792,7 @@ void enterState(ProgramState newState) {
       manualRunScrollList.title = "Select Zone";
       manualRunScrollList.title_text_size = 2;
       manualRunScrollList.title_text_color = COLOR_RGB565_YELLOW;
+      manualRunScrollList.show_back_button = true;
       setupScrollableListMetrics(manualRunScrollList, screen);
       DEBUG_PRINTLN("Entering manual run mode");
       drawManualRunMenu();
@@ -837,6 +814,7 @@ void enterState(ProgramState newState) {
       programsMenuScrollList.title = "Programs";
       programsMenuScrollList.title_text_size = 2;
       programsMenuScrollList.title_text_color = COLOR_RGB565_YELLOW;
+      programsMenuScrollList.show_back_button = true;
       setupScrollableListMetrics(programsMenuScrollList, screen);
       DEBUG_PRINTLN("Entering programs menu");
       drawProgramsMenu();
@@ -866,6 +844,7 @@ void enterState(ProgramState newState) {
         programSubMenuScrollList.title = progLabel;
         programSubMenuScrollList.title_text_size = 2;
         programSubMenuScrollList.title_text_color = COLOR_RGB565_YELLOW;
+        programSubMenuScrollList.show_back_button = true;
         setupScrollableListMetrics(programSubMenuScrollList, screen);
         DEBUG_PRINTF("Entering %s sub-menu\n", progLabel);
         drawProgramSubMenu(progLabel);
@@ -877,9 +856,9 @@ void enterState(ProgramState newState) {
       settingsMenuScrollList.num_items = SETTINGS_MENU_ITEMS;
       settingsMenuScrollList.selected_index_ptr = &selectedSettingsMenuIndex;
       settingsMenuScrollList.x = 0;
-      settingsMenuScrollList.y = 50; // Start list below the status info
+      settingsMenuScrollList.y = 50;
       settingsMenuScrollList.width = 320;
-      settingsMenuScrollList.height = 240 - 50; // Adjust height
+      settingsMenuScrollList.height = 240 - 50;
       settingsMenuScrollList.item_text_size = 2;
       settingsMenuScrollList.item_text_color = COLOR_RGB565_LGRAY;
       settingsMenuScrollList.selected_item_text_color = COLOR_RGB565_WHITE;
@@ -888,6 +867,7 @@ void enterState(ProgramState newState) {
       settingsMenuScrollList.title = "Settings";
       settingsMenuScrollList.title_text_size = 2;
       settingsMenuScrollList.title_text_color = COLOR_RGB565_YELLOW;
+      settingsMenuScrollList.show_back_button = true;
       setupScrollableListMetrics(settingsMenuScrollList, screen);
       DEBUG_PRINTLN("Entering settings menu");
       drawSettingsMenu();
@@ -895,8 +875,7 @@ void enterState(ProgramState newState) {
     case STATE_SET_SYSTEM_TIME:
       timeEditFieldIndex = 0;
       editingTimeField = false;
-      // Note: The list items are dynamically generated in drawSetSystemTimeMenu
-      setTimeScrollList.num_items = 7; // 6 fields + 1 for "Back"
+      setTimeScrollList.num_items = 6; // 6 fields
       setTimeScrollList.selected_index_ptr = &timeEditFieldIndex;
       setTimeScrollList.x = 0;
       setTimeScrollList.y = 70;
@@ -910,6 +889,7 @@ void enterState(ProgramState newState) {
       setTimeScrollList.title = "Set System Time";
       setTimeScrollList.title_text_size = 2;
       setTimeScrollList.title_text_color = COLOR_RGB565_YELLOW;
+      setTimeScrollList.show_back_button = true;
       setupScrollableListMetrics(setTimeScrollList, screen);
       DEBUG_PRINTLN("Entering system time setting mode");
       drawSetSystemTimeMenu();
@@ -1164,7 +1144,7 @@ void startManualZone(int zoneIdx) {
   DEBUG_PRINTF("Free heap: %d bytes\n", ESP.getFreeHeap());
 
   // Move to "running zone" state (indefinite or timed, your choice)
-  enterState(STATE_RUNNING_ZONE);
+  navigateTo(STATE_RUNNING_ZONE);
 }
 
 void drawRunningZoneMenu() {
@@ -1366,9 +1346,9 @@ void handleSetSystemTimeEncoder(long diff) {
 }
 
 void handleSetSystemTimeButton() {
-  // If "Back to Settings" is selected, just go back
-  if (timeEditFieldIndex == 6) {
-    enterState(STATE_SETTINGS);
+  // If "Back" is selected, just go back
+  if (timeEditFieldIndex == setTimeScrollList.num_items) {
+    goBack();
     return;
   }
 
@@ -1378,8 +1358,8 @@ void handleSetSystemTimeButton() {
   // If we just finished editing a field, move to the next one automatically
   if (!editingTimeField) {
     timeEditFieldIndex++;
-    if (timeEditFieldIndex > 6) { // Wrap around or exit
-        timeEditFieldIndex = 0; // Or handle exit logic
+    if (timeEditFieldIndex >= setTimeScrollList.num_items) {
+        timeEditFieldIndex = 0; 
     }
   }
   
@@ -1493,7 +1473,7 @@ void handleProgramEditEncoder(long diff, ProgramConfig &cfg, const char* progLab
   drawProgramConfigMenu(progLabel, cfg);
 }
 
-void handleProgramEditButton(ProgramConfig &cfg, ProgramState thisState, const char* progLabel) {
+void handleProgramEditButton(ProgramConfig &cfg, UIState thisState, const char* progLabel) {
   programEditFieldIndex++;
   
   // Total fields: 1 (enabled) + 2 (time) + 1 (delay) + 7 (days) + 7 (zones) = 18 fields
@@ -1502,12 +1482,7 @@ void handleProgramEditButton(ProgramConfig &cfg, ProgramState thisState, const c
 
   if (programEditFieldIndex > max_field_index) {
     programEditFieldIndex = 0; // Reset for next time
-    
-    // Return to the specific program's sub-menu
-    if (thisState == STATE_PROG_A) enterState(STATE_PROGRAM_A_MENU);
-    else if (thisState == STATE_PROG_B) enterState(STATE_PROGRAM_B_MENU);
-    else if (thisState == STATE_PROG_C) enterState(STATE_PROGRAM_C_MENU);
-    else enterState(STATE_MAIN_MENU); // Fallback
+    goBack();
   } else {
     // If we are entering the zone list, update the selected index
     if (programEditFieldIndex >= 11) {
@@ -1529,7 +1504,7 @@ void startProgramRun(int programIndex, ActiveOperationType type) {
   currentOperation = type; // OP_MANUAL_PROGRAM or OP_SCHEDULED_PROGRAM
 
   DEBUG_PRINTF("Program %s started. Current operation: %d\n", programs[programIndex]->name, currentOperation);
-  enterState(STATE_PROGRAM_RUNNING);
+  navigateTo(STATE_PROGRAM_RUNNING);
 }
 
 void updateProgramRun() {
@@ -1579,7 +1554,7 @@ void updateProgramRun() {
       // All zones in the program are complete
       DEBUG_PRINTF("Program %s completed.\n", cfg->name);
       stopAllActivity();
-      enterState(STATE_MAIN_MENU);
+      navigateTo(STATE_MAIN_MENU);
     }
   }
   // Update display every 5 seconds
@@ -1959,7 +1934,7 @@ void startWiFiSetup() {
   }
   
   // Return to settings menu
-  enterState(STATE_SETTINGS);
+  navigateTo(STATE_SETTINGS);
 }
 
 void drawWiFiResetMenu() {
@@ -1988,7 +1963,7 @@ void drawWiFiResetMenu() {
   screen.println("configure new network");
 
   delay(3000);
-  enterState(STATE_SETTINGS);
+  navigateTo(STATE_SETTINGS);
 }
 
 void drawSystemInfoMenu() {
@@ -2069,7 +2044,7 @@ void drawSystemInfoMenu() {
   }
   delay(200); // Debounce
   
-  enterState(STATE_SETTINGS);
+  navigateTo(STATE_SETTINGS);
 }
 
 void resetWiFiCredentials() {
@@ -2135,7 +2110,7 @@ void updateTestMode() {
     if (currentTestRelay >= NUM_RELAYS) {
       DEBUG_PRINTLN("Test mode complete - all relays tested");
       stopTestMode();
-      enterState(STATE_MAIN_MENU);
+      navigateTo(STATE_MAIN_MENU);
       return;
     }
     
