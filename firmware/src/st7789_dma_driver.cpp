@@ -117,9 +117,14 @@ void st7789_init_display(int8_t dc_pin, int8_t cs_pin, int8_t rst_pin, int8_t bl
     // or MADCTL_MY | MADCTL_MV = 0x80 | 0x20 = 0xA0.
     // The DFRobot library with setRotation(3) results in a 320 wide, 240 high display.
     // Let's try 0xA0 (MADCTL_MY | MADCTL_MV) which is common for this orientation.
-    st7789_send_data(MADCTL_MY | MADCTL_MV); // MY=1, MV=1 for landscape, canvas 0,0 top-left
+    // GFXcanvas16 stores colors as RGB.
+    // Correct orientation is MY | MV (0xA0). INVON is correct.
+    // User reports G/B swap with this ("yellow looks purple, blue looks green").
+    // MADCTL_BGR bit (R/B swap) does not fix G/B swap.
+    // So, setting MADCTL for correct orientation and RGB data.
+    st7789_send_data(MADCTL_MY | MADCTL_MV); // MY=1, MV=1. (0xA0)
 
-    st7789_send_command(ST7789_INVON); // Display Inversion On (some displays need this)
+    st7789_send_command(ST7789_INVON); // Display Inversion On - This was confirmed correct.
     //st7789_send_command(ST7789_INVOFF); // Display Inversion Off
 
     st7789_send_command(ST7789_NORON);  // Normal display on
@@ -155,8 +160,49 @@ void st7789_push_canvas(const uint16_t* buffer, int16_t w, int16_t h) {
     // For ESP32, spi->writeBytes or spi->transfer(buffer, len) is better for transmit-only.
     // Let's use spi->writePattern for potentially faster block writes if available,
     // or fallback to byte-by-byte or small chunks if DMA is not yet implemented.
-    // For now, using _spi->transfer with a cast, assuming it handles transmit efficiently.
-    _spi->transfer(const_cast<uint8_t*>(reinterpret_cast<const uint8_t*>(buffer)), buffer_size_bytes);
+    // Based on user feedback:
+    // With MADCTL=0xA0 (MY|MV), INVON, no BGR bit, no pixel swap:
+    //   Yellow (1,1,0) -> Purple (1,0,1)
+    //   Blue   (0,0,1) -> Green  (0,1,0)
+    // This implies panel transformation T(R,G,B) = (R_disp=G_src, G_disp=B_src, B_disp=R_src) (cyclic R->G->B->R)
+    // No, this is T(R,G,B) = (R_src, B_src, G_src) (G/B swap)
+    //
+    // With G/B pixel swap (R_src, B_src_exp, G_src_trc) sent:
+    //   Green (0,1,0) is good.
+    //   Blue (0,0,1) becomes Red (1,0,0).
+    //   This means (R_src, G_src_appr, B_src_appr) on glass for Green (0,1,0) is (0,1,0).
+    //   And for Blue (0,0,1), (0,0,1) on glass becomes Red (1,0,0). This is a final R/B swap for blue pixels.
+    //
+    // The panel transformation seems to be: T_panel(R_in, G_in, B_in) = (G_in, B_in, R_in)
+    // To get (R_target, G_target, B_target) on screen, we need to send P_sent such that T_panel(P_sent) = P_target.
+    // (G_sent, B_sent, R_sent) = (R_target, G_target, B_target)
+    // So, P_sent must be (B_target, R_target, G_target)
+    // R_sent = B_target
+    // G_sent = R_target
+    // B_sent = G_target
+
+    uint16_t* temp_buffer = (uint16_t*)malloc(buffer_size_bytes);
+    if (temp_buffer) {
+        for (int i = 0; i < w * h; i++) {
+            uint16_t color_src = buffer[i];
+            
+            uint8_t r_src_5bit = (color_src >> 11) & 0x1F;
+            uint8_t g_src_6bit = (color_src >> 5) & 0x3F;
+            uint8_t b_src_5bit = color_src & 0x1F;
+
+            // P_sent components:
+            uint8_t r_sent_5bit = b_src_5bit;
+            uint8_t g_sent_6bit = (r_src_5bit << 1) | (r_src_5bit >> 4); // Expand 5-bit R to 6-bit G (R5 R4 R3 R2 R1 R5)
+            uint8_t b_sent_5bit = (g_src_6bit >> 1);                     // Truncate 6-bit G to 5-bit B (G5 G4 G3 G2 G1)
+            
+            temp_buffer[i] = (r_sent_5bit << 11) | (g_sent_6bit << 5) | b_sent_5bit;
+        }
+        _spi->transfer(const_cast<uint8_t*>(reinterpret_cast<const uint8_t*>(temp_buffer)), buffer_size_bytes);
+        free(temp_buffer);
+    } else {
+        // Fallback or error if malloc fails - send original buffer
+        _spi->transfer(const_cast<uint8_t*>(reinterpret_cast<const uint8_t*>(buffer)), buffer_size_bytes);
+    }
     
     digitalWrite(_cs_pin, HIGH);
     _spi->endTransaction();
