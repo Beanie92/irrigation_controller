@@ -1,4 +1,5 @@
 #include "ui_components.h"
+#include <Arduino.h>
 
 // Helper function to set up calculated metrics for a scrollable list
 void setupScrollableListMetrics(ScrollableList& list, DFRobot_ST7789_240x320_HW_SPI& screen) {
@@ -107,4 +108,38 @@ void handleScrollableListInput(ScrollableList& list, long encoder_diff) {
         new_selected_index = 0;
     }
     *list.selected_index_ptr = new_selected_index;
+}
+
+// -----------------------------------------------------------------------------
+//                       Date/Time Display Component
+// -----------------------------------------------------------------------------
+void drawDateTimeComponent(DFRobot_ST7789_240x320_HW_SPI& screen, int x, int y, const SystemDateTime& dt, DayOfWeek dow) {
+    screen.setCursor(x, y);
+    screen.setTextColor(COLOR_RGB565_GREEN);
+    screen.setTextSize(2);
+
+    // Get day of the week string
+    const char* dow_str = "";
+    switch (dow) {
+        case SUNDAY:    dow_str = "Sun"; break;
+        case MONDAY:    dow_str = "Mon"; break;
+        case TUESDAY:   dow_str = "Tue"; break;
+        case WEDNESDAY: dow_str = "Wed"; break;
+        case THURSDAY:  dow_str = "Thu"; break;
+        case FRIDAY:    dow_str = "Fri"; break;
+        case SATURDAY:  dow_str = "Sat"; break;
+        default:        dow_str = "---"; break;
+    }
+
+    // Format example: YYYY-MM-DD HH:MM:SS (Day)
+    char buf[40];
+    sprintf(buf, "%04d-%02d-%02d %02d:%02d (%s)",
+        dt.year,
+        dt.month,
+        dt.day,
+        dt.hour,
+        dt.minute,
+        dow_str
+    );
+    screen.println(buf);
 }

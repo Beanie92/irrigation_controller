@@ -4,6 +4,36 @@
 #include "DFRobot_GDL.h"
 
 // -----------------------------------------------------------------------------
+//                           Data Structures
+// -----------------------------------------------------------------------------
+// Moved from src.ino to be shared with UI components
+
+struct SystemDateTime {
+  int year;   // e.g., 2023
+  int month;  // 1..12
+  int day;    // 1..31
+  int hour;   // 0..23
+  int minute; // 0..59
+  int second; // 0..59
+};
+
+typedef enum {
+    SUNDAY    = 0b00000001,
+    MONDAY    = 0b00000010,
+    TUESDAY   = 0b00000100,
+    WEDNESDAY = 0b00001000,
+    THURSDAY  = 0b00010000,
+    FRIDAY    = 0b00100000,
+    SATURDAY  = 0b01000000,
+    EVERYDAY  = 0b01111111  // All days
+} DayOfWeek;
+
+
+// -----------------------------------------------------------------------------
+//                           UI Components
+// -----------------------------------------------------------------------------
+
+// -----------------------------------------------------------------------------
 //                           Scrollable List Component
 // -----------------------------------------------------------------------------
 struct ScrollableList {
@@ -40,5 +70,9 @@ struct ScrollableList {
 void setupScrollableListMetrics(ScrollableList& list, DFRobot_ST7789_240x320_HW_SPI& screen);
 void drawScrollableList(DFRobot_ST7789_240x320_HW_SPI& screen, ScrollableList& list, bool is_active);
 void handleScrollableListInput(ScrollableList& list, long encoder_diff);
+
+// Date/Time Display Component
+void drawDateTimeComponent(DFRobot_ST7789_240x320_HW_SPI& screen, int x, int y, const SystemDateTime& dt, DayOfWeek dow);
+
 
 #endif // UI_COMPONENTS_H

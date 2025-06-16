@@ -182,15 +182,6 @@ const unsigned long TEST_INTERVAL = 5000; // 5 seconds per relay
 // -----------------------------------------------------------------------------
 //                  Time-Keeping (Software Simulation)
 // -----------------------------------------------------------------------------
-struct SystemDateTime {
-  int year;   // e.g., 2023
-  int month;  // 1..12
-  int day;    // 1..31
-  int hour;   // 0..23
-  int minute; // 0..59
-  int second; // 0..59
-};
-
 SystemDateTime currentDateTime = {2023, 1, 1, 8, 0, 0}; // Example start date/time
 unsigned long lastSecondUpdate = 0; // track millis() to increment seconds
 
@@ -223,17 +214,6 @@ void incrementOneSecond() {
 // -----------------------------------------------------------------------------
 //                 Program Config
 // -----------------------------------------------------------------------------
-typedef enum {
-    SUNDAY    = 0b00000001,
-    MONDAY    = 0b00000010,
-    TUESDAY   = 0b00000100,
-    WEDNESDAY = 0b00001000,
-    THURSDAY  = 0b00010000,
-    FRIDAY    = 0b00100000,
-    SATURDAY  = 0b01000000,
-    EVERYDAY  = 0b01111111  // All days
-} DayOfWeek;
-
 // Time structure (could use instead of SystemDateTime for start time)
 typedef struct {
     uint8_t hour;    // 0-23
@@ -325,7 +305,6 @@ void drawLogo();
 void drawMainMenu();
 void drawProgramsMenu();
 void drawProgramSubMenu(const char* label);
-void drawDateTime(int x, int y);
 void enterState(ProgramState newState);
 
 void updateSoftwareClock();
@@ -1007,7 +986,7 @@ void enterState(ProgramState newState) {
 // -----------------------------------------------------------------------------
 void drawMainMenu() {
   // Show date/time at the top (outside the scrollable list component)
-  drawDateTime(10, 10);
+  drawDateTimeComponent(screen, 10, 10, currentDateTime, getCurrentDayOfWeek());
   
   // Draw the scrollable list for the main menu
   drawScrollableList(screen, mainMenuScrollList, true);
@@ -1026,25 +1005,6 @@ void drawProgramsMenu() {
 void drawProgramSubMenu(const char* label) {
   programSubMenuScrollList.title = label;
   drawScrollableList(screen, programSubMenuScrollList, true);
-}
-
-// A simple function to display the current date/time
-void drawDateTime(int x, int y) {
-  screen.setCursor(x, y);
-  screen.setTextColor(COLOR_RGB565_GREEN);
-  screen.setTextSize(2);
-
-  // Format example: YYYY-MM-DD HH:MM:SS
-  char buf[32];
-  sprintf(buf, "%04d-%02d-%02d %02d:%02d:%02d",
-      currentDateTime.year,
-      currentDateTime.month,
-      currentDateTime.day,
-      currentDateTime.hour,
-      currentDateTime.minute,
-      currentDateTime.second
-  );
-  screen.println(buf);
 }
 
 // -----------------------------------------------------------------------------
@@ -1090,40 +1050,34 @@ void updateSoftwareClock() {
       // Overwrite old area
       screen.fillRect(10, 10, 300, 20, COLOR_RGB565_BLACK);
       // Re-draw date/time
-      drawDateTime(10, 10);
+      drawDateTimeComponent(screen, 10, 10, currentDateTime, getCurrentDayOfWeek());
     }
   }
 }
 
-// Helper to get current day of week (simplistic, assumes currentDateTime is accurate)
+// Helper to get current day of week.
 DayOfWeek getCurrentDayOfWeek() {
-  // This is a very simplistic mapping and assumes currentDateTime is kept accurate.
-  // In a real system, you'd use a proper RTC or NTP sync with timeinfo.tm_wday.
-  // For now, let's just return MONDAY for demonstration.
-  // A more robust solution would involve calculating day of week from date.
-  // For the purpose of this exercise, we'll assume tm_wday from timeinfo is available
-  // if NTP is synced, or we'd need a more complex date-to-day-of-week algorithm.
-  // For now, let's just return a fixed day if not synced, or use tm_wday if synced.
   if (timeSync) {
+    // If synced with NTP, use the library's day of the week
     time_t now;
     struct tm timeinfo;
     time(&now);
     localtime_r(&now, &timeinfo);
-    switch (timeinfo.tm_wday) {
-      case 0: return SUNDAY;
-      case 1: return MONDAY;
-      case 2: return TUESDAY;
-      case 3: return WEDNESDAY;
-      case 4: return THURSDAY;
-      case 5: return FRIDAY;
-      case 6: return SATURDAY;
-      default: return SUNDAY; // Should not happen
-    }
+    // tm_wday is 0 for Sunday, 1 for Monday, etc.
+    // Our DayOfWeek enum is a bitfield, so we need to convert.
+    return (DayOfWeek)(1 << timeinfo.tm_wday);
   } else {
-    // If not time synced, we can't reliably get the day of week.
-    // For simulation, we might just return a default or a day based on a counter.
-    // For now, let's return MONDAY as a placeholder.
-    return MONDAY; 
+    // If not synced, calculate day of week from date using Sakamoto's algorithm
+    // https://en.wikipedia.org/wiki/Determination_of_the_day_of_the_week#Sakamoto's_methods
+    int y = currentDateTime.year;
+    int m = currentDateTime.month;
+    int d = currentDateTime.day;
+    static int t[] = {0, 3, 2, 5, 0, 3, 5, 1, 4, 6, 2, 4};
+    if (m < 3) {
+      y -= 1;
+    }
+    int dayOfWeekIndex = (y + y/4 - y/100 + y/400 + t[m-1] + d) % 7; // 0=Sunday, 1=Monday...
+    return (DayOfWeek)(1 << dayOfWeekIndex);
   }
 }
 
@@ -1223,7 +1177,7 @@ void drawRunningZoneMenu() {
   screen.println("Zone Running");
 
   // Show current date/time
-  drawDateTime(10, 40);
+  drawDateTimeComponent(screen, 10, 10, currentDateTime, getCurrentDayOfWeek());
 
   // Calculate elapsed time
   unsigned long elapsed = millis() - zoneStartTime;
@@ -1644,7 +1598,7 @@ void drawProgramRunningMenu() {
   screen.setCursor(10, 10);
   screen.println("Program Running");
 
-  drawDateTime(10, 40);
+  drawDateTimeComponent(screen, 10, 10, currentDateTime, getCurrentDayOfWeek());
 
   if (currentRunningProgram != -1) {
     ProgramConfig* cfg = programs[currentRunningProgram];
@@ -2263,7 +2217,5 @@ void stopTestMode() {
   
   stopAllActivity(); // Ensure all relays are off
   
-  DEBUG_PRINTLN("Test mode stopped - all relays OFF");
-}
   DEBUG_PRINTLN("Test mode stopped - all relays OFF");
 }
