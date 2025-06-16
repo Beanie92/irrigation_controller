@@ -1,9 +1,11 @@
 #include "ui_components.h"
-#include <Arduino.h>
+#include <Adafruit_GFX.h> // For GFXcanvas16
+#include "st7789_dma_driver.h" // For color definitions
+#include <Arduino.h>     // For sprintf, etc.
 
 
 // Helper function to set up calculated metrics for a scrollable list
-void setupScrollableListMetrics(ScrollableList& list, DFRobot_ST7789_240x320_HW_SPI& screen) {
+void setupScrollableListMetrics(ScrollableList& list, GFXcanvas16& canvas) {
     // Calculate item render height (text height + padding)
     // Assuming 8 pixels per text size unit for height, plus 4 pixels padding
     list.item_render_height = (8 * list.item_text_size) + 4;
@@ -27,16 +29,16 @@ void setupScrollableListMetrics(ScrollableList& list, DFRobot_ST7789_240x320_HW_
 }
 
 // Helper function to draw a scrollable list
-void drawScrollableList(DFRobot_ST7789_240x320_HW_SPI& screen, ScrollableList& list, bool is_active) {
+void drawScrollableList(GFXcanvas16& canvas, ScrollableList& list, bool is_active) {
     // Clear the component's background area
-    screen.fillRect(list.x, list.y, list.width, list.height, list.list_bg_color);
+    canvas.fillRect(list.x, list.y, list.width, list.height, list.list_bg_color);
 
     // Draw the title if provided
     if (list.title != nullptr) {
-        screen.setTextSize(list.title_text_size);
-        screen.setTextColor(list.title_text_color);
-        screen.setCursor(list.x + 10, list.y + 10); // Small padding from top-left
-        screen.println(list.title);
+        canvas.setTextSize(list.title_text_size);
+        canvas.setTextColor(list.title_text_color);
+        canvas.setCursor(list.x + 10, list.y + 10); // Small padding from top-left
+        canvas.println(list.title);
     }
 
     // Adjust top_visible_index to keep selected item in view
@@ -57,7 +59,7 @@ void drawScrollableList(DFRobot_ST7789_240x320_HW_SPI& screen, ScrollableList& l
     }
 
     // Draw visible menu items
-    screen.setTextSize(list.item_text_size);
+    canvas.setTextSize(list.item_text_size);
 
     for (int i = 0; i < list.max_items_in_view; i++) {
         int current_item_index = list.top_visible_index + i;
@@ -67,17 +69,17 @@ void drawScrollableList(DFRobot_ST7789_240x320_HW_SPI& screen, ScrollableList& l
         
         // Highlight selected item only if the list is active
         if (is_active && current_item_index == *list.selected_index_ptr) {
-            screen.fillRect(list.x, yPos, list.width, list.item_render_height, list.selected_item_bg_color);
-            screen.setTextColor(list.selected_item_text_color);
+            canvas.fillRect(list.x, yPos, list.width, list.item_render_height, list.selected_item_bg_color);
+            canvas.setTextColor(list.selected_item_text_color);
         } else {
-            screen.setTextColor(list.item_text_color);
+            canvas.setTextColor(list.item_text_color);
         }
-        screen.setCursor(list.x + 20, yPos + 5); // Small padding from top of item row
+        canvas.setCursor(list.x + 20, yPos + 5); // Small padding from top of item row
         
         // Render item text
         bool is_back_button_item = list.show_back_button && (current_item_index == list.num_items);
         if (is_back_button_item) {
-            screen.println("<- Back");
+            canvas.println("<- Back");
         } else if (current_item_index < list.num_items) { // Ensure index is within bounds
             if (list.format_string != nullptr && list.data_source != nullptr) {
                 // Data-driven list (e.g., for zone durations)
@@ -85,25 +87,25 @@ void drawScrollableList(DFRobot_ST7789_240x320_HW_SPI& screen, ScrollableList& l
                 // Assuming data_source is an array of uint16_t as per current usage
                 uint16_t* data_array = static_cast<uint16_t*>(list.data_source);
                 sprintf(buffer, list.format_string, current_item_index + 1, data_array[current_item_index]);
-                screen.println(buffer);
+                canvas.println(buffer);
             } else if (list.items != nullptr) {
                 // Simple string array list
-                screen.println(list.items[current_item_index]);
+                canvas.println(list.items[current_item_index]);
             }
         }
     }
 
     // Draw scroll indicators if not all items are visible
     if (total_items > list.max_items_in_view) {
-        screen.setTextSize(1); // Smaller text for indicators
-        screen.setTextColor(COLOR_RGB565_CYAN);
+        canvas.setTextSize(1); // Smaller text for indicators
+        canvas.setTextColor(COLOR_RGB565_CYAN);
         if (list.top_visible_index > 0) {
-            screen.setCursor(list.x + list.width - 20, list.list_items_area_y + 5); // Top right
-            screen.println("^");
+            canvas.setCursor(list.x + list.width - 20, list.list_items_area_y + 5); // Top right
+            canvas.println("^");
         }
         if (list.top_visible_index + list.max_items_in_view < total_items) {
-            screen.setCursor(list.x + list.width - 20, list.y + list.height - 15); // Bottom right
-            screen.println("v");
+            canvas.setCursor(list.x + list.width - 20, list.y + list.height - 15); // Bottom right
+            canvas.println("v");
         }
     }
 }
@@ -128,10 +130,10 @@ void handleScrollableListInput(ScrollableList& list, long encoder_diff) {
 // -----------------------------------------------------------------------------
 //                       Date/Time Display Component
 // -----------------------------------------------------------------------------
-void drawDateTimeComponent(DFRobot_ST7789_240x320_HW_SPI& screen, int x, int y, const SystemDateTime& dt, DayOfWeek dow) {
-    screen.setCursor(x, y);
-    screen.setTextColor(COLOR_RGB565_GREEN);
-    screen.setTextSize(2);
+void drawDateTimeComponent(GFXcanvas16& canvas, int x, int y, const SystemDateTime& dt, DayOfWeek dow) {
+    canvas.setCursor(x, y);
+    canvas.setTextColor(COLOR_RGB565_GREEN);
+    canvas.setTextSize(2);
 
     // Get day of the week string
     const char* dow_str = "";
@@ -156,5 +158,5 @@ void drawDateTimeComponent(DFRobot_ST7789_240x320_HW_SPI& screen, int x, int y, 
         dt.minute,
         dow_str
     );
-    screen.println(buf);
+    canvas.println(buf);
 }

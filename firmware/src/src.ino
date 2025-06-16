@@ -1,5 +1,5 @@
 #include <Arduino.h>
-#include "DFRobot_GDL.h"
+#include "st7789_dma_driver.h" // Replaced DFRobot_GDL.h
 #include "logo.h"
 #include "ui_components.h"
 #include <WiFi.h>
@@ -56,7 +56,14 @@ static const int ZONE_COUNT = 7; // zones 1..7
 #define TFT_RST  3
 #define TFT_BL   5 // Backlight control pin for dimming
 
-DFRobot_ST7789_240x320_HW_SPI screen(TFT_DC, TFT_CS, TFT_RST);
+// SPIClass instance for the display. VSPI is commonly used.
+// Default VSPI pins for ESP32: SCK=18, MISO=19, MOSI=23, SS=5 (but we use dedicated CS)
+// We will pass TFT_CS as the chip select pin to our driver.
+// The SPIClass object itself doesn't manage CS, our driver does.
+// We will use the default 'SPI' object, which is typically VSPI on ESP32.
+// SPIClass spi(VSPI); // This line is removed.
+
+GFXcanvas16 canvas(320, 240);
 
 // Relay labels (index 0 is the pump)
 const char* relayLabels[NUM_RELAYS] = {
@@ -76,6 +83,7 @@ const char* relayLabels[NUM_RELAYS] = {
 unsigned long lastActivityTime = 0;
 const unsigned long inactivityTimeout = 30000; // 30 seconds
 bool isScreenDimmed = false;
+volatile bool uiDirty = true; // Flag to trigger UI redraw
 
 // -----------------------------------------------------------------------------
 //                           Menu and Cycle States
@@ -301,6 +309,8 @@ ScrollableList setTimeScrollList;
 // -----------------------------------------------------------------------------
 //                           Forward Declarations
 // -----------------------------------------------------------------------------
+void updateScreen();
+void render();
 void isrPinA();
 void handleEncoderMovement();
 void handleButtonPress();
@@ -336,9 +346,9 @@ void drawCycleRunningMenu();
 
 // Settings menu functions
 void drawSettingsMenu();
-void drawWiFiSetupMenu();
 void drawWiFiResetMenu();
 void drawSystemInfoMenu();
+void drawWiFiSetupMenu();
 
 // Test Mode functions
 void startTestMode();
@@ -366,15 +376,16 @@ void setup() {
   DEBUG_PRINTF("Free heap: %d bytes\n", ESP.getFreeHeap());
 
   // Initialize display
-  DEBUG_PRINTLN("Initializing display...");
-  screen.begin();
-  screen.setRotation(3); // Rotate display 90 degrees clockwise
-  screen.fillScreen(COLOR_RGB565_BLACK);
-  DEBUG_PRINTLN("Display initialized successfully");
+  DEBUG_PRINTLN("Initializing display with custom driver...");
+  // Initialize SPI for VSPI. For ESP32-C6, check appropriate pins if not default.
+  // Assuming default VSPI pins are okay or configured elsewhere if needed.
+  // SPI.begin(); // SPIClass begin is called inside st7789_init_display
+  // Pass the address of the default SPI object.
+  st7789_init_display(TFT_DC, TFT_CS, TFT_RST, TFT_BL, &SPI); 
+  canvas.fillScreen(COLOR_RGB565_BLACK); // Clear canvas
+  DEBUG_PRINTLN("Display initialized successfully with custom driver");
 
-  // Setup backlight
-  pinMode(TFT_BL, OUTPUT);
-  digitalWrite(TFT_BL, HIGH); // Full brightness initially
+  // Backlight is handled by st7789_init_display and st7789_set_backlight
   lastActivityTime = millis();
 
   // Show logo for 3 seconds
@@ -410,13 +421,54 @@ void setup() {
 }
 
 // -----------------------------------------------------------------------------
+//                                RENDER
+// -----------------------------------------------------------------------------
+void render() {
+  if (!uiDirty) return;
+
+  // Draw the current UI state to the canvas
+  switch (currentState) {
+    case STATE_MAIN_MENU:       drawMainMenu(); break;
+    case STATE_CYCLES_MENU:     drawCyclesMenu(); break;
+    case STATE_CYCLE_A_MENU:    drawCycleSubMenu("Cycle A"); break;
+    case STATE_CYCLE_B_MENU:    drawCycleSubMenu("Cycle B"); break;
+    case STATE_CYCLE_C_MENU:    drawCycleSubMenu("Cycle C"); break;
+    case STATE_MANUAL_RUN:      drawManualRunMenu(); break;
+    case STATE_SETTINGS:        drawSettingsMenu(); break;
+    case STATE_SET_SYSTEM_TIME: drawSetSystemTimeMenu(); break;
+    case STATE_PROG_A:          drawCycleConfigMenu("Cycle A", cycleA); break;
+    case STATE_PROG_B:          drawCycleConfigMenu("Cycle B", cycleB); break;
+    case STATE_PROG_C:          drawCycleConfigMenu("Cycle C", cycleC); break;
+    case STATE_RUNNING_ZONE:    drawRunningZoneMenu(); break;
+    case STATE_CYCLE_RUNNING:   drawCycleRunningMenu(); break;
+    case STATE_TEST_MODE:       drawTestModeMenu(); break;
+    case STATE_WIFI_SETUP:      drawWiFiSetupMenu(); break;
+    case STATE_WIFI_RESET:      drawWiFiResetMenu(); break;
+    case STATE_SYSTEM_INFO:     drawSystemInfoMenu(); break;
+    default:
+      // Draw an error screen or something
+      canvas.fillScreen(COLOR_RGB565_RED);
+      canvas.setCursor(10, 10);
+      canvas.setTextSize(2);
+      canvas.setTextColor(COLOR_RGB565_WHITE);
+      canvas.println("Unknown UI State!");
+      break;
+  }
+
+  // Push the canvas to the screen
+  updateScreen();
+  
+  uiDirty = false; // Reset the flag
+}
+
+// -----------------------------------------------------------------------------
 //                                     LOOP
 // -----------------------------------------------------------------------------
 void loop() {
   // Handle screen dimming
   if (!isScreenDimmed && (millis() - lastActivityTime > inactivityTimeout)) {
     DEBUG_PRINTLN("Screen turning off due to inactivity.");
-    digitalWrite(TFT_BL, LOW); // Turn off backlight
+    st7789_set_backlight(false); // Turn off backlight using driver
     isScreenDimmed = true;
   }
 
@@ -430,6 +482,9 @@ void loop() {
   
   handleEncoderMovement();
   handleButtonPress();
+
+  // Render the UI if needed
+  render();
 
   // Check for scheduled cycles if no other operation is active
   if (currentOperation == OP_NONE) {
@@ -455,7 +510,7 @@ void loop() {
     static unsigned long lastDisplayUpdate = 0;
     if (millis() - lastDisplayUpdate > 5000) {
       lastDisplayUpdate = millis();
-      drawRunningZoneMenu();
+      uiDirty = true;
     }
     
     // Check for automatic zone timeout if it's a timed run
@@ -486,6 +541,7 @@ void IRAM_ATTR isrPinA() {
     encoderValue = encoderValue + 1;
   }
   encoderMoved = true;
+  uiDirty = true;
 }
 
 // -----------------------------------------------------------------------------
@@ -506,36 +562,28 @@ void handleEncoderMovement() {
 
   // Restore screen brightness on activity
   if (isScreenDimmed) {
-    digitalWrite(TFT_BL, HIGH); // Full brightness
+    st7789_set_backlight(true); // Full brightness using driver
     isScreenDimmed = false;
     DEBUG_PRINTLN("Screen brightness restored.");
   }
   lastActivityTime = millis();
+  uiDirty = true;
 
   DEBUG_PRINTF("Encoder moved: diff=%ld, state=%d\n", diff, currentState);
 
   switch (currentState) {
     case STATE_MAIN_MENU:
       handleScrollableListInput(mainMenuScrollList, diff);
-      drawMainMenu();
       break;
 
     case STATE_CYCLES_MENU:
       handleScrollableListInput(cyclesMenuScrollList, diff);
-      drawCyclesMenu();
       break;
 
     case STATE_CYCLE_A_MENU:
     case STATE_CYCLE_B_MENU:
     case STATE_CYCLE_C_MENU:
       handleScrollableListInput(cycleSubMenuScrollList, diff);
-      {
-        const char* progLabel;
-        if (currentState == STATE_CYCLE_A_MENU) progLabel = "Cycle A";
-        else if (currentState == STATE_CYCLE_B_MENU) progLabel = "Cycle B";
-        else progLabel = "Cycle C";
-        drawCycleSubMenu(progLabel);
-      }
       break;
 
     case STATE_MANUAL_RUN:
@@ -547,12 +595,10 @@ void handleEncoderMovement() {
       } else {
         handleScrollableListInput(manualRunScrollList, diff);
       }
-      drawManualRunMenu();
       break;
 
     case STATE_SETTINGS:
       handleScrollableListInput(settingsMenuScrollList, diff);
-      drawSettingsMenu();
       break;
 
     case STATE_SET_SYSTEM_TIME:
@@ -594,11 +640,12 @@ void handleButtonPress() {
 
       // Restore screen brightness on activity
       if (isScreenDimmed) {
-        digitalWrite(TFT_BL, HIGH); // Full brightness
+        st7789_set_backlight(true); // Full brightness using driver
         isScreenDimmed = false;
         DEBUG_PRINTLN("Screen brightness restored.");
       }
       lastActivityTime = millis();
+      uiDirty = true;
 
       // State-Specific Handling
       switch (currentState) {
@@ -678,7 +725,6 @@ void handleButtonPress() {
           } else {
             selectingDuration = true;
             DEBUG_PRINTF("Moving to duration selection for zone %d\n", selectedManualZoneIndex + 1);
-            drawManualRunMenu();
           }
           break;
 
@@ -763,7 +809,7 @@ void navigateTo(UIState newState, bool isNavigatingBack) {
   }
   
   currentState = newState;
-  screen.fillScreen(COLOR_RGB565_BLACK);
+  uiDirty = true;
 
   switch (currentState) {
     case STATE_MAIN_MENU:
@@ -783,9 +829,7 @@ void navigateTo(UIState newState, bool isNavigatingBack) {
       mainMenuScrollList.title_text_size = 2;
       mainMenuScrollList.title_text_color = COLOR_RGB565_YELLOW;
       mainMenuScrollList.show_back_button = false; // No back button on main menu
-      setupScrollableListMetrics(mainMenuScrollList, screen);
-      DEBUG_PRINTLN("Drawing main menu");
-      drawMainMenu();
+      setupScrollableListMetrics(mainMenuScrollList, canvas);
       break;
     case STATE_MANUAL_RUN:
       selectedManualZoneIndex = 0;
@@ -806,9 +850,7 @@ void navigateTo(UIState newState, bool isNavigatingBack) {
       manualRunScrollList.title_text_size = 2;
       manualRunScrollList.title_text_color = COLOR_RGB565_YELLOW;
       manualRunScrollList.show_back_button = true;
-      setupScrollableListMetrics(manualRunScrollList, screen);
-      DEBUG_PRINTLN("Entering manual run mode");
-      drawManualRunMenu();
+      setupScrollableListMetrics(manualRunScrollList, canvas);
       break;
     case STATE_CYCLES_MENU:
       selectedCyclesMenuIndex = 0;
@@ -828,9 +870,7 @@ void navigateTo(UIState newState, bool isNavigatingBack) {
       cyclesMenuScrollList.title_text_size = 2;
       cyclesMenuScrollList.title_text_color = COLOR_RGB565_YELLOW;
       cyclesMenuScrollList.show_back_button = true;
-      setupScrollableListMetrics(cyclesMenuScrollList, screen);
-      DEBUG_PRINTLN("Entering cycles menu");
-      drawCyclesMenu();
+      setupScrollableListMetrics(cyclesMenuScrollList, canvas);
       break;
     case STATE_CYCLE_A_MENU:
     case STATE_CYCLE_B_MENU:
@@ -858,9 +898,8 @@ void navigateTo(UIState newState, bool isNavigatingBack) {
         cycleSubMenuScrollList.title_text_size = 2;
         cycleSubMenuScrollList.title_text_color = COLOR_RGB565_YELLOW;
         cycleSubMenuScrollList.show_back_button = true;
-        setupScrollableListMetrics(cycleSubMenuScrollList, screen);
+        setupScrollableListMetrics(cycleSubMenuScrollList, canvas);
         DEBUG_PRINTF("Entering %s sub-menu\n", progLabel);
-        drawCycleSubMenu(progLabel);
       }
       break;
     case STATE_SETTINGS:
@@ -881,9 +920,7 @@ void navigateTo(UIState newState, bool isNavigatingBack) {
       settingsMenuScrollList.title_text_size = 2;
       settingsMenuScrollList.title_text_color = COLOR_RGB565_YELLOW;
       settingsMenuScrollList.show_back_button = true;
-      setupScrollableListMetrics(settingsMenuScrollList, screen);
-      DEBUG_PRINTLN("Entering settings menu");
-      drawSettingsMenu();
+      setupScrollableListMetrics(settingsMenuScrollList, canvas);
       break;
     case STATE_SET_SYSTEM_TIME:
       timeEditFieldIndex = 0;
@@ -903,9 +940,7 @@ void navigateTo(UIState newState, bool isNavigatingBack) {
       setTimeScrollList.title_text_size = 2;
       setTimeScrollList.title_text_color = COLOR_RGB565_YELLOW;
       setTimeScrollList.show_back_button = true;
-      setupScrollableListMetrics(setTimeScrollList, screen);
-      DEBUG_PRINTLN("Entering system time setting mode");
-      drawSetSystemTimeMenu();
+      setupScrollableListMetrics(setTimeScrollList, canvas);
       break;
     case STATE_WIFI_SETUP:
       DEBUG_PRINTLN("Starting WiFi setup");
@@ -951,19 +986,16 @@ void navigateTo(UIState newState, bool isNavigatingBack) {
         cycleZonesScrollList.title_text_color = COLOR_RGB565_YELLOW;
         cycleZonesScrollList.show_back_button = true;
         
-        setupScrollableListMetrics(cycleZonesScrollList, screen);
+        setupScrollableListMetrics(cycleZonesScrollList, canvas);
         
         DEBUG_PRINTF("Entering %s configuration\n", progLabel);
-        drawCycleConfigMenu(progLabel, *currentProg);
       }
       break;
     case STATE_RUNNING_ZONE:
       DEBUG_PRINTLN("Entering running zone state");
-      drawRunningZoneMenu();
       break;
     case STATE_CYCLE_RUNNING:
       DEBUG_PRINTLN("Entering cycle running state");
-      drawCycleRunningMenu();
       break;
     case STATE_TEST_MODE:
       DEBUG_PRINTLN("Starting test mode");
@@ -979,33 +1011,36 @@ void navigateTo(UIState newState, bool isNavigatingBack) {
 //                           MAIN MENU DRAWING
 // -----------------------------------------------------------------------------
 void drawMainMenu() {
+  canvas.fillScreen(COLOR_RGB565_BLACK);
   // Show date/time at the top (outside the scrollable list component)
-  drawDateTimeComponent(screen, 10, 10, currentDateTime, getCurrentDayOfWeek());
+  drawDateTimeComponent(canvas, 10, 10, currentDateTime, getCurrentDayOfWeek());
   
   // Draw the scrollable list for the main menu
-  drawScrollableList(screen, mainMenuScrollList, true);
+  drawScrollableList(canvas, mainMenuScrollList, true);
 }
 
 // -----------------------------------------------------------------------------
 //                           CYCLES MENU DRAWING
 // -----------------------------------------------------------------------------
 void drawCyclesMenu() {
-  drawScrollableList(screen, cyclesMenuScrollList, true);
+  canvas.fillScreen(COLOR_RGB565_BLACK);
+  drawScrollableList(canvas, cyclesMenuScrollList, true);
 }
 
 // -----------------------------------------------------------------------------
 //                           CYCLE SUB-MENU DRAWING
 // -----------------------------------------------------------------------------
 void drawCycleSubMenu(const char* label) {
+  canvas.fillScreen(COLOR_RGB565_BLACK);
   cycleSubMenuScrollList.title = label;
-  drawScrollableList(screen, cycleSubMenuScrollList, true);
+  drawScrollableList(canvas, cycleSubMenuScrollList, true);
 }
 
 // -----------------------------------------------------------------------------
 //                           LOGO DISPLAY
 // -----------------------------------------------------------------------------
 void drawLogo() {
-  screen.fillScreen(COLOR_RGB565_WHITE);
+  canvas.fillScreen(COLOR_RGB565_WHITE);
   
   // Calculate position to center the logo
   int x = (320 - LOGO_WIDTH) / 2;
@@ -1015,21 +1050,25 @@ void drawLogo() {
   for (int row = 0; row < LOGO_HEIGHT; row++) {
     for (int col = 0; col < LOGO_WIDTH; col++) {
       uint16_t pixel = logo_data[row * LOGO_WIDTH + col];
-      screen.drawPixel(x + col, y + row, pixel);
+      canvas.drawPixel(x + col, y + row, pixel);
     }
   }
   
   // Add version info below the logo
-  screen.setTextSize(1);
-  screen.setTextColor(COLOR_RGB565_BLACK);
-  screen.setCursor(80, y + LOGO_HEIGHT + 20);
-  screen.println("v1.0 - ESP32-C6");
+  canvas.setTextSize(1);
+  canvas.setTextColor(COLOR_RGB565_BLACK);
+  canvas.setCursor(80, y + LOGO_HEIGHT + 20);
+  canvas.println("v1.0 - ESP32-C6");
   
   // Loading indicator
-  screen.setCursor(90, y + LOGO_HEIGHT + 40);
-  screen.println("Loading...");
+  canvas.setCursor(90, y + LOGO_HEIGHT + 40);
+  canvas.println("Loading...");
+  updateScreen();
 }
 
+void updateScreen() {
+  st7789_push_canvas(canvas.getBuffer(), 320, 240);
+}
 // -----------------------------------------------------------------------------
 //                         SIMPLE SOFTWARE CLOCK
 // -----------------------------------------------------------------------------
@@ -1039,12 +1078,9 @@ void updateSoftwareClock() {
     lastSecondUpdate = now;
     incrementOneSecond();
 
-    // If in main menu, re-draw date/time so it remains fresh
+    // If in a state that shows the clock, mark UI as dirty to redraw
     if (currentState == STATE_MAIN_MENU || currentState == STATE_CYCLE_RUNNING || currentState == STATE_RUNNING_ZONE) {
-      // Overwrite old area
-      screen.fillRect(10, 10, 300, 20, COLOR_RGB565_BLACK);
-      // Re-draw date/time
-      drawDateTimeComponent(screen, 10, 10, currentDateTime, getCurrentDayOfWeek());
+      uiDirty = true;
     }
   }
 }
@@ -1079,51 +1115,51 @@ DayOfWeek getCurrentDayOfWeek() {
 //                           MANUAL RUN FUNCTIONS
 // -----------------------------------------------------------------------------
 void drawManualRunMenu() {
-  screen.fillScreen(COLOR_RGB565_BLACK);
+  canvas.fillScreen(COLOR_RGB565_BLACK);
 
   if (selectingDuration) {
     // Duration selection mode
-    screen.setTextSize(2);
-    screen.setTextColor(COLOR_RGB565_YELLOW);
-    screen.setCursor(10, 10);
-    screen.println("Manual Run");
+    canvas.setTextSize(2);
+    canvas.setTextColor(COLOR_RGB565_YELLOW);
+    canvas.setCursor(10, 10);
+    canvas.println("Manual Run");
     
-    screen.setCursor(10, 40);
-    screen.setTextColor(COLOR_RGB565_GREEN);
-    screen.printf("Zone: %s", relayLabels[selectedManualZoneIndex + 1]);
+    canvas.setCursor(10, 40);
+    canvas.setTextColor(COLOR_RGB565_GREEN);
+    canvas.printf("Zone: %s", relayLabels[selectedManualZoneIndex + 1]);
     
-    screen.setCursor(10, 70);
-    screen.setTextColor(COLOR_RGB565_CYAN);
-    screen.println("Select Duration:");
+    canvas.setCursor(10, 70);
+    canvas.setTextColor(COLOR_RGB565_CYAN);
+    canvas.println("Select Duration:");
     
-    screen.setCursor(10, 100);
-    screen.setTextSize(3);
-    screen.setTextColor(COLOR_RGB565_WHITE);
-    screen.printf("%d minutes", selectedManualDuration);
+    canvas.setCursor(10, 100);
+    canvas.setTextSize(3);
+    canvas.setTextColor(COLOR_RGB565_WHITE);
+    canvas.printf("%d minutes", selectedManualDuration);
     
     // Duration options for reference
-    screen.setTextSize(1);
-    screen.setTextColor(COLOR_RGB565_LGRAY);
-    screen.setCursor(10, 140);
-    screen.println("Common durations:");
-    screen.setCursor(10, 155);
-    screen.println("5, 10, 15, 20, 30, 45, 60 min");
-    screen.setCursor(10, 170);
-    screen.println("Range: 1-120 minutes");
+    canvas.setTextSize(1);
+    canvas.setTextColor(COLOR_RGB565_LGRAY);
+    canvas.setCursor(10, 140);
+    canvas.println("Common durations:");
+    canvas.setCursor(10, 155);
+    canvas.println("5, 10, 15, 20, 30, 45, 60 min");
+    canvas.setCursor(10, 170);
+    canvas.println("Range: 1-120 minutes");
     
     // Instructions
-    screen.setTextSize(1);
-    screen.setTextColor(COLOR_RGB565_YELLOW);
-    screen.setCursor(10, 200);
-    screen.println("Rotate to adjust duration");
-    screen.setCursor(10, 215);
-    screen.println("Press button to start zone");
-    screen.setCursor(10, 230);
-    screen.println("Long press to go back");
+    canvas.setTextSize(1);
+    canvas.setTextColor(COLOR_RGB565_YELLOW);
+    canvas.setCursor(10, 200);
+    canvas.println("Rotate to adjust duration");
+    canvas.setCursor(10, 215);
+    canvas.println("Press button to start zone");
+    canvas.setCursor(10, 230);
+    canvas.println("Long press to go back");
     
   } else {
     // Zone selection mode using scrollable list
-    drawScrollableList(screen, manualRunScrollList, true);
+    drawScrollableList(canvas, manualRunScrollList, true);
   }
 }
 
@@ -1162,16 +1198,16 @@ void startManualZone(int zoneIdx) {
 }
 
 void drawRunningZoneMenu() {
-  screen.fillScreen(COLOR_RGB565_BLACK);
+  canvas.fillScreen(COLOR_RGB565_BLACK);
 
   // Title
-  screen.setTextSize(2);
-  screen.setTextColor(COLOR_RGB565_YELLOW);
-  screen.setCursor(10, 10);
-  screen.println("Zone Running");
+  canvas.setTextSize(2);
+  canvas.setTextColor(COLOR_RGB565_YELLOW);
+  canvas.setCursor(10, 10);
+  canvas.println("Zone Running");
 
   // Show current date/time
-  drawDateTimeComponent(screen, 10, 10, currentDateTime, getCurrentDayOfWeek());
+  drawDateTimeComponent(canvas, 10, 10, currentDateTime, getCurrentDayOfWeek());
 
   // Calculate elapsed time
   unsigned long elapsed = millis() - zoneStartTime;
@@ -1180,68 +1216,68 @@ void drawRunningZoneMenu() {
   unsigned long remainingSeconds = elapsedSeconds % 60;
 
   // Display running zone information
-  screen.setTextSize(2);
+  canvas.setTextSize(2);
   if (currentRunningZone > 0) {
-    screen.setTextColor(COLOR_RGB565_GREEN);
-    screen.setCursor(10, 80);
-    screen.printf("Active: %s", relayLabels[currentRunningZone]);
+    canvas.setTextColor(COLOR_RGB565_GREEN);
+    canvas.setCursor(10, 80);
+    canvas.printf("Active: %s", relayLabels[currentRunningZone]);
     
     // Show elapsed time
-    screen.setCursor(10, 110);
-    screen.setTextColor(COLOR_RGB565_CYAN);
-    screen.printf("Running: %02lu:%02lu", elapsedMinutes, remainingSeconds);
+    canvas.setCursor(10, 110);
+    canvas.setTextColor(COLOR_RGB565_CYAN);
+    canvas.printf("Running: %02lu:%02lu", elapsedMinutes, remainingSeconds);
     
     // Show pump status
-    screen.setCursor(10, 140);
-    screen.setTextColor(relayStates[PUMP_IDX] ? COLOR_RGB565_GREEN : COLOR_RGB565_RED);
-    screen.printf("Pump: %s", relayStates[PUMP_IDX] ? "ON" : "OFF");
+    canvas.setCursor(10, 140);
+    canvas.setTextColor(relayStates[PUMP_IDX] ? COLOR_RGB565_GREEN : COLOR_RGB565_RED);
+    canvas.printf("Pump: %s", relayStates[PUMP_IDX] ? "ON" : "OFF");
 
     // Show run type
-    screen.setTextSize(1);
-    screen.setCursor(10, 170);
-    screen.setTextColor(COLOR_RGB565_WHITE);
+    canvas.setTextSize(1);
+    canvas.setCursor(10, 170);
+    canvas.setTextColor(COLOR_RGB565_WHITE);
     if (isTimedRun && zoneDuration > 0) {
       unsigned long totalMinutes = zoneDuration / 60000;
       unsigned long remainingTime = (zoneDuration - elapsed) / 1000;
       unsigned long remMinutes = remainingTime / 60;
       unsigned long remSeconds = remainingTime % 60;
-      screen.printf("Timed run: %lu min total", totalMinutes);
-      screen.setCursor(10, 185);
-      screen.setTextColor(COLOR_RGB565_YELLOW);
-      screen.printf("Time left: %02lu:%02lu", remMinutes, remSeconds);
+      canvas.printf("Timed run: %lu min total", totalMinutes);
+      canvas.setCursor(10, 185);
+      canvas.setTextColor(COLOR_RGB565_YELLOW);
+      canvas.printf("Time left: %02lu:%02lu", remMinutes, remSeconds);
     } else {
-      screen.println("Manual run (indefinite)");
+      canvas.println("Manual run (indefinite)");
     }
   } else {
-    screen.setTextColor(COLOR_RGB565_RED);
-    screen.setCursor(10, 80);
-    screen.println("No Zone Active");
+    canvas.setTextColor(COLOR_RGB565_RED);
+    canvas.setCursor(10, 80);
+    canvas.println("No Zone Active");
   }
 
   // Show compact zone status
-  screen.setTextSize(1);
-  screen.setTextColor(COLOR_RGB565_WHITE);
-  screen.setCursor(10, 210);
-  screen.println("All Zones:");
+  canvas.setTextSize(1);
+  canvas.setTextColor(COLOR_RGB565_WHITE);
+  canvas.setCursor(10, 210);
+  canvas.println("All Zones:");
 
   for (int i = 1; i < NUM_RELAYS; i++) {
     int yPos = 225 + (i-1) * 10;
-    screen.setCursor(10, yPos);
+    canvas.setCursor(10, yPos);
     
     // Highlight active zone
     if (relayStates[i]) {
-      screen.setTextColor(COLOR_RGB565_GREEN);
+      canvas.setTextColor(COLOR_RGB565_GREEN);
     } else {
-      screen.setTextColor(COLOR_RGB565_LGRAY);
+      canvas.setTextColor(COLOR_RGB565_LGRAY);
     }
     
-    screen.printf("%s: %s", relayLabels[i], relayStates[i] ? "ON" : "OFF");
+    canvas.printf("%s: %s", relayLabels[i], relayStates[i] ? "ON" : "OFF");
   }
 
   // Instructions
-  screen.setTextColor(COLOR_RGB565_YELLOW);
-  screen.setCursor(10, 300);
-  screen.println("Press button to stop zone");
+  canvas.setTextColor(COLOR_RGB565_YELLOW);
+  canvas.setCursor(10, 300);
+  canvas.println("Press button to stop zone");
 }
 
 void stopAllActivity() { // Renamed from stopZone
@@ -1312,7 +1348,7 @@ void drawSetSystemTimeMenu() {
     setTimeScrollList.selected_item_bg_color = COLOR_RGB565_BLUE;
   }
 
-  drawScrollableList(screen, setTimeScrollList, true);
+  drawScrollableList(canvas, setTimeScrollList, true);
 }
 
 void handleSetSystemTimeEncoder(long diff) {
@@ -1356,7 +1392,7 @@ void handleSetSystemTimeEncoder(long diff) {
   }
   
   // Redraw the screen with updated value
-  drawSetSystemTimeMenu();
+  uiDirty = true;
 }
 
 void handleSetSystemTimeButton() {
@@ -1377,68 +1413,68 @@ void handleSetSystemTimeButton() {
     }
   }
   
-  drawSetSystemTimeMenu();
+  uiDirty = true;
 }
 
 // -----------------------------------------------------------------------------
 //          CYCLE A / B / C CONFIG EDIT (ENHANCED)
 // -----------------------------------------------------------------------------
 void drawCycleConfigMenu(const char* label, CycleConfig& cfg) {
-  screen.fillScreen(COLOR_RGB565_BLACK);
+  canvas.fillScreen(COLOR_RGB565_BLACK);
 
-  screen.setTextSize(2);
-  screen.setTextColor(COLOR_RGB565_YELLOW);
-  screen.setCursor(10, 10);
-  screen.print(label);
-  screen.println(" Configuration");
+  canvas.setTextSize(2);
+  canvas.setTextColor(COLOR_RGB565_YELLOW);
+  canvas.setCursor(10, 10);
+  canvas.print(label);
+  canvas.println(" Configuration");
 
   // --- Draw non-scrolling fields ---
-  screen.setTextSize(2);
+  canvas.setTextSize(2);
   uint16_t color;
 
   // Field 0: Enabled
   color = (cycleEditFieldIndex == 0) ? COLOR_RGB565_WHITE : COLOR_RGB565_LGRAY;
-  screen.setTextColor(color);
-  screen.setCursor(10, 40);
-  screen.printf("Enabled: %s", cfg.enabled ? "YES" : "NO");
+  canvas.setTextColor(color);
+  canvas.setCursor(10, 40);
+  canvas.printf("Enabled: %s", cfg.enabled ? "YES" : "NO");
 
   // Field 1 & 2: Start Time
   color = (cycleEditFieldIndex >= 1 && cycleEditFieldIndex <= 2) ? COLOR_RGB565_WHITE : COLOR_RGB565_LGRAY;
-  screen.setTextColor(color);
-  screen.setCursor(10, 65);
-  screen.printf("Start Time: %02d:%02d", cfg.startTime.hour, cfg.startTime.minute);
+  canvas.setTextColor(color);
+  canvas.setCursor(10, 65);
+  canvas.printf("Start Time: %02d:%02d", cfg.startTime.hour, cfg.startTime.minute);
 
   // Field 3: Inter-Zone Delay
   color = (cycleEditFieldIndex == 3) ? COLOR_RGB565_WHITE : COLOR_RGB565_LGRAY;
-  screen.setTextColor(color);
-  screen.setCursor(10, 90);
-  screen.printf("Inter-Zone Delay: %d min", cfg.interZoneDelay);
+  canvas.setTextColor(color);
+  canvas.setCursor(10, 90);
+  canvas.printf("Inter-Zone Delay: %d min", cfg.interZoneDelay);
 
   // Fields 4-10: Days Active
-  screen.setTextSize(1);
-  screen.setCursor(10, 115);
-  screen.setTextColor(COLOR_RGB565_YELLOW);
-  screen.println("Days Active:");
+  canvas.setTextSize(1);
+  canvas.setCursor(10, 115);
+  canvas.setTextColor(COLOR_RGB565_YELLOW);
+  canvas.println("Days Active:");
   const char* dayLabels[] = {"Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"};
   for (int i = 0; i < 7; i++) {
     int xPos = 10 + i * 45;
     color = (cycleEditFieldIndex == (4 + i)) ? COLOR_RGB565_WHITE : COLOR_RGB565_LGRAY;
-    screen.setTextColor(color);
-    screen.setCursor(xPos, 130);
-    screen.printf("%s %c", dayLabels[i], (cfg.daysActive & (1 << i)) ? '*' : ' ');
+    canvas.setTextColor(color);
+    canvas.setCursor(xPos, 130);
+    canvas.printf("%s %c", dayLabels[i], (cfg.daysActive & (1 << i)) ? '*' : ' ');
   }
 
   // --- Draw scrollable list for Zone Durations ---
   bool is_zone_list_active = (cycleEditFieldIndex >= 11);
-  drawScrollableList(screen, cycleZonesScrollList, is_zone_list_active);
+  drawScrollableList(canvas, cycleZonesScrollList, is_zone_list_active);
 
 
   // --- Instructions ---
-  screen.setTextSize(1);
-  screen.setTextColor(COLOR_RGB565_WHITE);
-  screen.setCursor(10, 290);
-  screen.println("Rotate to change, Press to select next.");
-  screen.println("Long press to exit.");
+  canvas.setTextSize(1);
+  canvas.setTextColor(COLOR_RGB565_WHITE);
+  canvas.setCursor(10, 290);
+  canvas.println("Rotate to change, Press to select next.");
+  canvas.println("Long press to exit.");
 }
 
 void handleCycleEditEncoder(long diff, CycleConfig &cfg, const char* progLabel) {
@@ -1484,7 +1520,7 @@ void handleCycleEditEncoder(long diff, CycleConfig &cfg, const char* progLabel) 
     }
   }
   
-  drawCycleConfigMenu(progLabel, cfg);
+  uiDirty = true;
 }
 
 void handleCycleEditButton(CycleConfig &cfg, UIState thisState, const char* progLabel) {
@@ -1518,7 +1554,7 @@ void handleCycleEditButton(CycleConfig &cfg, UIState thisState, const char* prog
     cycleEditFieldIndex = 11; // Cap at 11
   }
   
-  drawCycleConfigMenu(progLabel, cfg);
+  uiDirty = true;
 }
 
 void startCycleRun(int cycleIndex, ActiveOperationType type) {
@@ -1589,79 +1625,79 @@ void updateCycleRun() {
   static unsigned long lastDisplayUpdate = 0;
   if (millis() - lastDisplayUpdate > 5000) {
     lastDisplayUpdate = millis();
-    drawCycleRunningMenu();
+    uiDirty = true;
   }
 }
 
 void drawCycleRunningMenu() {
-  screen.fillScreen(COLOR_RGB565_BLACK);
+  canvas.fillScreen(COLOR_RGB565_BLACK);
 
-  screen.setTextSize(2);
-  screen.setTextColor(COLOR_RGB565_YELLOW);
-  screen.setCursor(10, 10);
-  screen.println("Cycle Running");
+  canvas.setTextSize(2);
+  canvas.setTextColor(COLOR_RGB565_YELLOW);
+  canvas.setCursor(10, 10);
+  canvas.println("Cycle Running");
 
-  drawDateTimeComponent(screen, 10, 10, currentDateTime, getCurrentDayOfWeek());
+  drawDateTimeComponent(canvas, 10, 10, currentDateTime, getCurrentDayOfWeek());
 
   if (currentRunningCycle != -1) {
     CycleConfig* cfg = cycles[currentRunningCycle];
-    screen.setTextColor(COLOR_RGB565_GREEN);
-    screen.setCursor(10, 80);
-    screen.printf("Cycle: %s", cfg->name);
+    canvas.setTextColor(COLOR_RGB565_GREEN);
+    canvas.setCursor(10, 80);
+    canvas.printf("Cycle: %s", cfg->name);
 
     if (inInterZoneDelay) {
-      screen.setTextColor(COLOR_RGB565_CYAN);
-      screen.setCursor(10, 110);
+      canvas.setTextColor(COLOR_RGB565_CYAN);
+      canvas.setCursor(10, 110);
       unsigned long elapsedDelay = (millis() - cycleInterZoneDelayStartTime) / 1000;
       unsigned long remainingDelay = (unsigned long)cfg->interZoneDelay * 60 - elapsedDelay;
-      screen.printf("Delay: %02lu:%02lu", remainingDelay / 60, remainingDelay % 60);
-      screen.setCursor(10, 140);
-      screen.setTextColor(COLOR_RGB565_WHITE);
-      screen.println("Waiting for next zone...");
+      canvas.printf("Delay: %02lu:%02lu", remainingDelay / 60, remainingDelay % 60);
+      canvas.setCursor(10, 140);
+      canvas.setTextColor(COLOR_RGB565_WHITE);
+      canvas.println("Waiting for next zone...");
     } else if (currentCycleZoneIndex < ZONE_COUNT) {
       int zoneToRun = currentCycleZoneIndex + 1;
       unsigned long zoneRunDuration = (unsigned long)cfg->zoneDurations[currentCycleZoneIndex] * 60000;
       unsigned long elapsedZoneTime = millis() - cycleZoneStartTime;
       unsigned long remainingZoneTime = (zoneRunDuration - elapsedZoneTime) / 1000;
 
-      screen.setTextColor(COLOR_RGB565_CYAN);
-      screen.setCursor(10, 110);
-      screen.printf("Zone %d: %s", zoneToRun, relayLabels[zoneToRun]);
-      screen.setCursor(10, 140);
-      screen.printf("Time left: %02lu:%02lu", remainingZoneTime / 60, remainingZoneTime % 60);
+      canvas.setTextColor(COLOR_RGB565_CYAN);
+      canvas.setCursor(10, 110);
+      canvas.printf("Zone %d: %s", zoneToRun, relayLabels[zoneToRun]);
+      canvas.setCursor(10, 140);
+      canvas.printf("Time left: %02lu:%02lu", remainingZoneTime / 60, remainingZoneTime % 60);
     } else {
-      screen.setTextColor(COLOR_RGB565_GREEN);
-      screen.setCursor(10, 110);
-      screen.println("Cycle Finishing...");
+      canvas.setTextColor(COLOR_RGB565_GREEN);
+      canvas.setCursor(10, 110);
+      canvas.println("Cycle Finishing...");
     }
 
-    screen.setCursor(10, 170);
-    screen.setTextColor(relayStates[PUMP_IDX] ? COLOR_RGB565_GREEN : COLOR_RGB565_RED);
-    screen.printf("Pump: %s", relayStates[PUMP_IDX] ? "ON" : "OFF");
+    canvas.setCursor(10, 170);
+    canvas.setTextColor(relayStates[PUMP_IDX] ? COLOR_RGB565_GREEN : COLOR_RGB565_RED);
+    canvas.printf("Pump: %s", relayStates[PUMP_IDX] ? "ON" : "OFF");
 
-    screen.setTextSize(1);
-    screen.setTextColor(COLOR_RGB565_WHITE);
-    screen.setCursor(10, 200);
-    screen.println("Current Status:");
+    canvas.setTextSize(1);
+    canvas.setTextColor(COLOR_RGB565_WHITE);
+    canvas.setCursor(10, 200);
+    canvas.println("Current Status:");
     for (int i = 1; i < NUM_RELAYS; i++) {
       int yPos = 215 + (i-1) * 10;
-      screen.setCursor(10, yPos);
+      canvas.setCursor(10, yPos);
       if (relayStates[i]) {
-        screen.setTextColor(COLOR_RGB565_GREEN);
+        canvas.setTextColor(COLOR_RGB565_GREEN);
       } else {
-        screen.setTextColor(COLOR_RGB565_LGRAY);
+        canvas.setTextColor(COLOR_RGB565_LGRAY);
       }
-      screen.printf("%s: %s", relayLabels[i], relayStates[i] ? "ON" : "OFF");
+      canvas.printf("%s: %s", relayLabels[i], relayStates[i] ? "ON" : "OFF");
     }
   } else {
-    screen.setTextColor(COLOR_RGB565_RED);
-    screen.setCursor(10, 80);
-    screen.println("No Cycle Active");
+    canvas.setTextColor(COLOR_RGB565_RED);
+    canvas.setCursor(10, 80);
+    canvas.println("No Cycle Active");
   }
 
-  screen.setTextColor(COLOR_RGB565_YELLOW);
-  screen.setCursor(10, 300);
-  screen.println("Press button to stop cycle");
+  canvas.setTextColor(COLOR_RGB565_YELLOW);
+  canvas.setCursor(10, 300);
+  canvas.println("Press button to stop cycle");
 }
 
 // -----------------------------------------------------------------------------
@@ -1686,14 +1722,15 @@ void initWiFi() {
   wm.setAPStaticIPConfig(IPAddress(192,168,4,1), IPAddress(192,168,4,1), IPAddress(255,255,255,0));
   
   // Display WiFi setup message on screen
-  screen.fillScreen(COLOR_RGB565_BLACK);
-  screen.setTextSize(2);
-  screen.setTextColor(COLOR_RGB565_YELLOW);
-  screen.setCursor(10, 10);
-  screen.println("WiFi Setup");
-  screen.setTextColor(COLOR_RGB565_WHITE);
-  screen.setCursor(10, 50);
-  screen.println("Connecting...");
+  canvas.fillScreen(COLOR_RGB565_BLACK);
+  canvas.setTextSize(2);
+  canvas.setTextColor(COLOR_RGB565_YELLOW);
+  canvas.setCursor(10, 10);
+  canvas.println("WiFi Setup");
+  canvas.setTextColor(COLOR_RGB565_WHITE);
+  canvas.setCursor(10, 50);
+  canvas.println("Connecting...");
+  updateScreen();
   
   DEBUG_PRINTLN("Attempting to connect to saved WiFi...");
   
@@ -1702,32 +1739,33 @@ void initWiFi() {
     DEBUG_PRINTLN("Failed to connect to WiFi");
     
     // Show captive portal instructions on display
-    screen.fillScreen(COLOR_RGB565_BLACK);
-    screen.setTextSize(2);
-    screen.setTextColor(COLOR_RGB565_RED);
-    screen.setCursor(10, 10);
-    screen.println("WiFi Setup Required");
+    canvas.fillScreen(COLOR_RGB565_BLACK);
+    canvas.setTextSize(2);
+    canvas.setTextColor(COLOR_RGB565_RED);
+    canvas.setCursor(10, 10);
+    canvas.println("WiFi Setup Required");
     
-    screen.setTextSize(1);
-    screen.setTextColor(COLOR_RGB565_WHITE);
-    screen.setCursor(10, 50);
-    screen.println("1. Connect to WiFi:");
-    screen.setCursor(10, 70);
-    screen.println("   'IrrigationController'");
-    screen.setCursor(10, 90);
-    screen.println("2. Password: irrigation123");
-    screen.setCursor(10, 110);
-    screen.println("3. Open browser to:");
-    screen.setCursor(10, 130);
-    screen.println("   192.168.4.1");
-    screen.setCursor(10, 150);
-    screen.println("4. Configure your WiFi");
-    screen.setCursor(10, 170);
-    screen.println("5. Device will restart");
+    canvas.setTextSize(1);
+    canvas.setTextColor(COLOR_RGB565_WHITE);
+    canvas.setCursor(10, 50);
+    canvas.println("1. Connect to WiFi:");
+    canvas.setCursor(10, 70);
+    canvas.println("   'IrrigationController'");
+    canvas.setCursor(10, 90);
+    canvas.println("2. Password: irrigation123");
+    canvas.setCursor(10, 110);
+    canvas.println("3. Open browser to:");
+    canvas.setCursor(10, 130);
+    canvas.println("   192.168.4.1");
+    canvas.setCursor(10, 150);
+    canvas.println("4. Configure your WiFi");
+    canvas.setCursor(10, 170);
+    canvas.println("5. Device will restart");
     
-    screen.setTextColor(COLOR_RGB565_YELLOW);
-    screen.setCursor(10, 200);
-    screen.println("Waiting for config...");
+    canvas.setTextColor(COLOR_RGB565_YELLOW);
+    canvas.setCursor(10, 200);
+    canvas.println("Waiting for config...");
+    updateScreen();
     
     wifiConnected = false;
     DEBUG_PRINTLN("WiFi configuration portal started");
@@ -1740,20 +1778,20 @@ void initWiFi() {
       connectToWiFi();
     } else {
       DEBUG_PRINTLN("WiFi configuration timed out - continuing without WiFi");
-      screen.fillScreen(COLOR_RGB565_BLACK);
-      screen.setTextSize(2);
-      screen.setTextColor(COLOR_RGB565_RED);
-      screen.setCursor(10, 10);
-      screen.println("WiFi Setup");
-      screen.println("Timed Out");
-      screen.setTextColor(COLOR_RGB565_WHITE);
-      screen.setCursor(10, 80);
-      screen.println("Continuing without");
-      screen.println("internet time sync");
+      canvas.fillScreen(COLOR_RGB565_BLACK);
+      canvas.setTextSize(2);
+      canvas.setTextColor(COLOR_RGB565_RED);
+      canvas.setCursor(10, 10);
+      canvas.println("WiFi Setup");
+      canvas.println("Timed Out");
+      canvas.setTextColor(COLOR_RGB565_WHITE);
+      canvas.setCursor(10, 80);
+      canvas.println("Continuing without");
+      canvas.println("internet time sync");
+      updateScreen();
       delay(3000);
     }
   } else {
-    // Successfully connected
     connectToWiFi();
   }
 }
@@ -1767,34 +1805,34 @@ void connectToWiFi() {
     DEBUG_PRINTF("Signal strength: %d dBm\n", WiFi.RSSI());
     
     // Show success on display
-    screen.fillScreen(COLOR_RGB565_BLACK);
-    screen.setTextSize(2);
-    screen.setTextColor(COLOR_RGB565_GREEN);
-    screen.setCursor(10, 10);
-    screen.println("WiFi Connected!");
+    canvas.fillScreen(COLOR_RGB565_BLACK);
+    canvas.setTextSize(2);
+    canvas.setTextColor(COLOR_RGB565_GREEN);
+    canvas.setCursor(10, 10);
+    canvas.println("WiFi Connected!");
     
-    screen.setTextSize(1);
-    screen.setTextColor(COLOR_RGB565_WHITE);
-    screen.setCursor(10, 50);
-    screen.printf("SSID: %s\n", WiFi.SSID().c_str());
-    screen.setCursor(10, 70);
-    screen.printf("IP: %s\n", WiFi.localIP().toString().c_str());
-    screen.setCursor(10, 90);
-    screen.println("Syncing time...");
+    canvas.setTextSize(1);
+    canvas.setTextColor(COLOR_RGB565_WHITE);
+    canvas.setCursor(10, 50);
+    canvas.printf("SSID: %s\n", WiFi.SSID().c_str());
+    canvas.setCursor(10, 70);
+    canvas.printf("IP: %s\n", WiFi.localIP().toString().c_str());
+    canvas.setCursor(10, 90);
+    canvas.println("Syncing time...");
     
     // Initialize NTP
     syncTimeWithNTP();
     
     // Show final status
-    screen.setCursor(10, 110);
+    canvas.setCursor(10, 110);
     if (timeSync) {
-      screen.setTextColor(COLOR_RGB565_GREEN);
-      screen.println("Time sync: SUCCESS");
+      canvas.setTextColor(COLOR_RGB565_GREEN);
+      canvas.println("Time sync: SUCCESS");
     } else {
-      screen.setTextColor(COLOR_RGB565_YELLOW);
-      screen.println("Time sync: FAILED");
+      canvas.setTextColor(COLOR_RGB565_YELLOW);
+      canvas.println("Time sync: FAILED");
     }
-    
+    st7789_push_canvas(canvas.getBuffer(), 320, 240); // Use new driver
     delay(2000);
   } else {
     wifiConnected = false;
@@ -1862,52 +1900,51 @@ void updateSystemTimeFromNTP() {
 //                           Settings Menu Functions
 // -----------------------------------------------------------------------------
 void drawSettingsMenu() {
-  // This function is now simpler. It just draws the status and the list.
-  // The main screen clearing is handled in enterState.
+  canvas.fillScreen(COLOR_RGB565_BLACK);
   
   // --- Draw the static status information at the top ---
-  // We only need to redraw this part if something changes, but for simplicity,
-  // we'll redraw it each time. A more optimized approach would be to have a
-  // separate function that only updates the top status bar.
-  screen.fillRect(0, 0, 320, 50, COLOR_RGB565_BLACK); // Clear top area
-  screen.setTextSize(1);
-  screen.setCursor(10, 10);
+  canvas.setTextSize(1);
+  canvas.setCursor(10, 10);
   if (wifiConnected) {
-    screen.setTextColor(COLOR_RGB565_GREEN);
-    screen.printf("WiFi: Connected (%s)", WiFi.SSID().c_str());
+    canvas.setTextColor(COLOR_RGB565_GREEN);
+    canvas.printf("WiFi: Connected (%s)", WiFi.SSID().c_str());
   } else {
-    screen.setTextColor(COLOR_RGB565_RED);
-    screen.println("WiFi: Not Connected");
+    canvas.setTextColor(COLOR_RGB565_RED);
+    canvas.println("WiFi: Not Connected");
   }
 
-  screen.setCursor(10, 25);
+  canvas.setCursor(10, 25);
   if (timeSync) {
-    screen.setTextColor(COLOR_RGB565_GREEN);
-    screen.println("Time: NTP Synced");
+    canvas.setTextColor(COLOR_RGB565_GREEN);
+    canvas.println("Time: NTP Synced");
   } else {
-    screen.setTextColor(COLOR_RGB565_YELLOW);
-    screen.println("Time: Manual/Software Clock");
+    canvas.setTextColor(COLOR_RGB565_YELLOW);
+    canvas.println("Time: Manual/Software Clock");
   }
   
   // Draw a separator line
-  screen.drawLine(0, 45, 320, 45, COLOR_RGB565_LGRAY);
+  canvas.drawLine(0, 45, 320, 45, COLOR_RGB565_LGRAY);
 
   // --- Draw the scrollable list for the settings items ---
-  // The list is drawn starting from y=50, as configured in enterState
-  drawScrollableList(screen, settingsMenuScrollList, true);
+  drawScrollableList(canvas, settingsMenuScrollList, true);
+}
+
+void drawWiFiSetupMenu() {
+    // This function is intentionally left blank.
 }
 
 void startWiFiSetup() {
-  screen.fillScreen(COLOR_RGB565_BLACK);
-  screen.setTextSize(2);
-  screen.setTextColor(COLOR_RGB565_YELLOW);
-  screen.setCursor(10, 10);
-  screen.println("WiFi Setup");
+  canvas.fillScreen(COLOR_RGB565_BLACK);
+  canvas.setTextSize(2);
+  canvas.setTextColor(COLOR_RGB565_YELLOW);
+  canvas.setCursor(10, 10);
+  canvas.println("WiFi Setup");
 
-  screen.setTextColor(COLOR_RGB565_WHITE);
-  screen.setCursor(10, 50);
-  screen.println("Starting WiFi");
-  screen.println("configuration...");
+  canvas.setTextColor(COLOR_RGB565_WHITE);
+  canvas.setCursor(10, 50);
+  canvas.println("Starting WiFi");
+  canvas.println("configuration...");
+  st7789_push_canvas(canvas.getBuffer(), 320, 240); // Use new driver
 
   DEBUG_PRINTLN("=== Manual WiFi Setup ===");
   
@@ -1917,30 +1954,31 @@ void startWiFiSetup() {
   wm.setConfigPortalTimeout(180); // 3 minutes
   
   // Show setup instructions
-  screen.fillScreen(COLOR_RGB565_BLACK);
-  screen.setTextSize(2);
-  screen.setTextColor(COLOR_RGB565_YELLOW);
-  screen.setCursor(10, 10);
-  screen.println("WiFi Setup Portal");
+  canvas.fillScreen(COLOR_RGB565_BLACK);
+  canvas.setTextSize(2);
+  canvas.setTextColor(COLOR_RGB565_YELLOW);
+  canvas.setCursor(10, 10);
+  canvas.println("WiFi Setup Portal");
   
-  screen.setTextSize(1);
-  screen.setTextColor(COLOR_RGB565_WHITE);
-  screen.setCursor(10, 50);
-  screen.println("1. Connect to WiFi:");
-  screen.setCursor(10, 70);
-  screen.println("   'IrrigationController'");
-  screen.setCursor(10, 90);
-  screen.println("2. Password: irrigation123");
-  screen.setCursor(10, 110);
-  screen.println("3. Open browser to:");
-  screen.setCursor(10, 130);
-  screen.println("   192.168.4.1");
-  screen.setCursor(10, 150);
-  screen.println("4. Configure your WiFi");
+  canvas.setTextSize(1);
+  canvas.setTextColor(COLOR_RGB565_WHITE);
+  canvas.setCursor(10, 50);
+  canvas.println("1. Connect to WiFi:");
+  canvas.setCursor(10, 70);
+  canvas.println("   'IrrigationController'");
+  canvas.setCursor(10, 90);
+  canvas.println("2. Password: irrigation123");
+  canvas.setCursor(10, 110);
+  canvas.println("3. Open browser to:");
+  canvas.setCursor(10, 130);
+  canvas.println("   192.168.4.1");
+  canvas.setCursor(10, 150);
+  canvas.println("4. Configure your WiFi");
   
-  screen.setTextColor(COLOR_RGB565_YELLOW);
-  screen.setCursor(10, 180);
-  screen.println("Starting portal...");
+  canvas.setTextColor(COLOR_RGB565_YELLOW);
+  canvas.setCursor(10, 180);
+  canvas.println("Starting portal...");
+  st7789_push_canvas(canvas.getBuffer(), 320, 240); // Use new driver
   
   // Start configuration portal
   if (wm.startConfigPortal("IrrigationController", "irrigation123")) {
@@ -1949,15 +1987,16 @@ void startWiFiSetup() {
     connectToWiFi();
   } else {
     DEBUG_PRINTLN("WiFi configuration failed or timed out");
-    screen.fillScreen(COLOR_RGB565_BLACK);
-    screen.setTextSize(2);
-    screen.setTextColor(COLOR_RGB565_RED);
-    screen.setCursor(10, 10);
-    screen.println("WiFi Setup");
-    screen.println("Failed");
-    screen.setTextColor(COLOR_RGB565_WHITE);
-    screen.setCursor(10, 80);
-    screen.println("Try again later");
+    canvas.fillScreen(COLOR_RGB565_BLACK);
+    canvas.setTextSize(2);
+    canvas.setTextColor(COLOR_RGB565_RED);
+    canvas.setCursor(10, 10);
+    canvas.println("WiFi Setup");
+    canvas.println("Failed");
+    canvas.setTextColor(COLOR_RGB565_WHITE);
+    canvas.setCursor(10, 80);
+    canvas.println("Try again later");
+    st7789_push_canvas(canvas.getBuffer(), 320, 240); // Use new driver
     delay(2000);
   }
   
@@ -1966,105 +2005,105 @@ void startWiFiSetup() {
 }
 
 void drawWiFiResetMenu() {
-  screen.fillScreen(COLOR_RGB565_BLACK);
-  screen.setTextSize(2);
-  screen.setTextColor(COLOR_RGB565_YELLOW);
-  screen.setCursor(10, 10);
-  screen.println("WiFi Reset");
+  canvas.fillScreen(COLOR_RGB565_BLACK);
+  canvas.setTextSize(2);
+  canvas.setTextColor(COLOR_RGB565_YELLOW);
+  canvas.setCursor(10, 10);
+  canvas.println("WiFi Reset");
 
-  screen.setTextColor(COLOR_RGB565_WHITE);
-  screen.setCursor(10, 50);
-  screen.println("Clearing saved");
-  screen.println("WiFi credentials...");
+  canvas.setTextColor(COLOR_RGB565_WHITE);
+  canvas.setCursor(10, 50);
+  canvas.println("Clearing saved");
+  canvas.println("WiFi credentials...");
 
   DEBUG_PRINTLN("=== WiFi Reset ===");
   resetWiFiCredentials();
 
-  screen.setTextColor(COLOR_RGB565_GREEN);
-  screen.setCursor(10, 120);
-  screen.println("WiFi credentials");
-  screen.println("cleared!");
+  canvas.setTextColor(COLOR_RGB565_GREEN);
+  canvas.setCursor(10, 120);
+  canvas.println("WiFi credentials");
+  canvas.println("cleared!");
 
-  screen.setTextColor(COLOR_RGB565_WHITE);
-  screen.setCursor(10, 180);
-  screen.println("Use 'WiFi Setup' to");
-  screen.println("configure new network");
-
+  canvas.setTextColor(COLOR_RGB565_WHITE);
+  canvas.setCursor(10, 180);
+  canvas.println("Use 'WiFi Setup' to");
+  canvas.println("configure new network");
+  st7789_push_canvas(canvas.getBuffer(), 320, 240); // Use new driver
   delay(3000);
   navigateTo(STATE_SETTINGS);
 }
 
 void drawSystemInfoMenu() {
-  screen.fillScreen(COLOR_RGB565_BLACK);
-  screen.setTextSize(2);
-  screen.setTextColor(COLOR_RGB565_YELLOW);
-  screen.setCursor(10, 10);
-  screen.println("System Info");
+  canvas.fillScreen(COLOR_RGB565_BLACK);
+  canvas.setTextSize(2);
+  canvas.setTextColor(COLOR_RGB565_YELLOW);
+  canvas.setCursor(10, 10);
+  canvas.println("System Info");
 
-  screen.setTextSize(1);
-  screen.setTextColor(COLOR_RGB565_WHITE);
+  canvas.setTextSize(1);
+  canvas.setTextColor(COLOR_RGB565_WHITE);
   
   int y = 50;
-  screen.setCursor(10, y);
-  screen.println("=== Hardware ===");
+  canvas.setCursor(10, y);
+  canvas.println("=== Hardware ===");
   y += 15;
   
-  screen.setCursor(10, y);
-  screen.println("Board: ESP32-C6");
+  canvas.setCursor(10, y);
+  canvas.println("Board: ESP32-C6");
   y += 12;
   
-  screen.setCursor(10, y);
-  screen.printf("Free Heap: %d bytes\n", ESP.getFreeHeap());
+  canvas.setCursor(10, y);
+  canvas.printf("Free Heap: %d bytes\n", ESP.getFreeHeap());
   y += 12;
   
-  screen.setCursor(10, y);
-  screen.printf("Chip Rev: %d\n", ESP.getChipRevision());
+  canvas.setCursor(10, y);
+  canvas.printf("Chip Rev: %d\n", ESP.getChipRevision());
   y += 20;
 
-  screen.setCursor(10, y);
-  screen.println("=== Network ===");
+  canvas.setCursor(10, y);
+  canvas.println("=== Network ===");
   y += 15;
   
   if (wifiConnected) {
-    screen.setCursor(10, y);
-    screen.printf("SSID: %s\n", WiFi.SSID().c_str());
+    canvas.setCursor(10, y);
+    canvas.printf("SSID: %s\n", WiFi.SSID().c_str());
     y += 12;
     
-    screen.setCursor(10, y);
-    screen.printf("IP: %s\n", WiFi.localIP().toString().c_str());
+    canvas.setCursor(10, y);
+    canvas.printf("IP: %s\n", WiFi.localIP().toString().c_str());
     y += 12;
     
-    screen.setCursor(10, y);
-    screen.printf("Signal: %d dBm\n", WiFi.RSSI());
+    canvas.setCursor(10, y);
+    canvas.printf("Signal: %d dBm\n", WiFi.RSSI());
     y += 12;
     
-    screen.setCursor(10, y);
-    screen.printf("MAC: %s\n", WiFi.macAddress().c_str());
+    canvas.setCursor(10, y);
+    canvas.printf("MAC: %s\n", WiFi.macAddress().c_str());
     y += 20;
   } else {
-    screen.setCursor(10, y);
-    screen.println("WiFi: Not Connected");
+    canvas.setCursor(10, y);
+    canvas.println("WiFi: Not Connected");
     y += 20;
   }
 
-  screen.setCursor(10, y);
-  screen.println("=== Time ===");
+  canvas.setCursor(10, y);
+  canvas.println("=== Time ===");
   y += 15;
   
-  screen.setCursor(10, y);
+  canvas.setCursor(10, y);
   if (timeSync) {
-    screen.println("Source: NTP Server");
+    canvas.println("Source: NTP Server");
     y += 12;
-    screen.setCursor(10, y);
-    screen.printf("Last Sync: %lu min ago\n", (millis() - lastNTPSync) / 60000);
+    canvas.setCursor(10, y);
+    canvas.printf("Last Sync: %lu min ago\n", (millis() - lastNTPSync) / 60000);
   } else {
-    screen.println("Source: Software Clock");
+    canvas.println("Source: Software Clock");
   }
 
   // Instructions
-  screen.setTextColor(COLOR_RGB565_YELLOW);
-  screen.setCursor(10, 220);
-  screen.println("Press button to return");
+  canvas.setTextColor(COLOR_RGB565_YELLOW);
+  canvas.setCursor(10, 220);
+  canvas.println("Press button to return");
 
   // Wait for button press
   while (digitalRead(button) == HIGH) {
@@ -2111,7 +2150,7 @@ void startTestMode() {
   digitalWrite(relayPins[currentTestRelay], HIGH);
   
   // Draw initial test mode screen
-  drawTestModeMenu();
+  uiDirty = true;
   
   DEBUG_PRINTLN("Test mode initialized - pump is now ON");
 }
@@ -2151,66 +2190,66 @@ void updateTestMode() {
     testModeStartTime = currentTime;
     
     // Update display
-    drawTestModeMenu();
+    uiDirty = true;
   }
 }
 
 void drawTestModeMenu() {
-  screen.fillScreen(COLOR_RGB565_BLACK);
+  canvas.fillScreen(COLOR_RGB565_BLACK);
   
-  screen.setTextSize(2);
-  screen.setTextColor(COLOR_RGB565_YELLOW);
-  screen.setCursor(10, 10);
-  screen.println("Test Mode");
+  canvas.setTextSize(2);
+  canvas.setTextColor(COLOR_RGB565_YELLOW);
+  canvas.setCursor(10, 10);
+  canvas.println("Test Mode");
   
   // Show current status
-  screen.setTextSize(2);
-  screen.setTextColor(COLOR_RGB565_WHITE);
-  screen.setCursor(10, 50);
+  canvas.setTextSize(2);
+  canvas.setTextColor(COLOR_RGB565_WHITE);
+  canvas.setCursor(10, 50);
   
   if (currentTestRelay < NUM_RELAYS) {
-    screen.printf("Testing: %s", relayLabels[currentTestRelay]);
+    canvas.printf("Testing: %s", relayLabels[currentTestRelay]);
     
     // Show countdown
     unsigned long elapsed = millis() - testModeStartTime;
     unsigned long remaining = (TEST_INTERVAL - elapsed) / 1000;
     
-    screen.setCursor(10, 80);
-    screen.setTextColor(COLOR_RGB565_GREEN);
-    screen.printf("Time left: %lu sec", remaining);
+    canvas.setCursor(10, 80);
+    canvas.setTextColor(COLOR_RGB565_GREEN);
+    canvas.printf("Time left: %lu sec", remaining);
     
     // Show progress
-    screen.setCursor(10, 110);
-    screen.setTextColor(COLOR_RGB565_CYAN);
-    screen.printf("Relay %d of %d", currentTestRelay + 1, NUM_RELAYS);
+    canvas.setCursor(10, 110);
+    canvas.setTextColor(COLOR_RGB565_CYAN);
+    canvas.printf("Relay %d of %d", currentTestRelay + 1, NUM_RELAYS);
   } else {
-    screen.println("Test Complete!");
+    canvas.println("Test Complete!");
   }
   
   // Show all relay states
-  screen.setTextSize(1);
-  screen.setTextColor(COLOR_RGB565_WHITE);
-  screen.setCursor(10, 150);
-  screen.println("Relay Status:");
+  canvas.setTextSize(1);
+  canvas.setTextColor(COLOR_RGB565_WHITE);
+  canvas.setCursor(10, 150);
+  canvas.println("Relay Status:");
   
   for (int i = 0; i < NUM_RELAYS; i++) {
     int yPos = 170 + i * 12;
-    screen.setCursor(10, yPos);
+    canvas.setCursor(10, yPos);
     
     // Highlight current relay
     if (i == currentTestRelay && testModeActive) {
-      screen.setTextColor(COLOR_RGB565_GREEN);
+      canvas.setTextColor(COLOR_RGB565_GREEN);
     } else {
-      screen.setTextColor(COLOR_RGB565_LGRAY);
+      canvas.setTextColor(COLOR_RGB565_LGRAY);
     }
     
-    screen.printf("%s: %s", relayLabels[i], relayStates[i] ? "ON" : "OFF");
+    canvas.printf("%s: %s", relayLabels[i], relayStates[i] ? "ON" : "OFF");
   }
   
   // Instructions
-  screen.setTextColor(COLOR_RGB565_YELLOW);
-  screen.setCursor(10, 280);
-  screen.println("Press button to cancel test");
+  canvas.setTextColor(COLOR_RGB565_YELLOW);
+  canvas.setCursor(10, 280);
+  canvas.println("Press button to cancel test");
 }
 
 void stopTestMode() {
