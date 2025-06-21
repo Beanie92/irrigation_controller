@@ -2,11 +2,8 @@
 #include "st7789_dma_driver.h" // Replaced DFRobot_GDL.h
 #include "logo.h"
 #include "ui_components.h"
-#include <WiFi.h>
-#include <WiFiManager.h>
-#include <time.h>
-#include <Preferences.h>
 #include "web_server.h" // Include the web server header
+#include "wifi_manager.h" // Include the new WiFi manager
 
 // -----------------------------------------------------------------------------
 //                           DEBUG CONFIGURATION
@@ -32,6 +29,7 @@ static const int button = 16;  // KY-040 SW (with internal pull-up)
 
 volatile long encoderValue = 0;
 volatile bool encoderMoved = false;
+volatile bool encoder_button_pressed = false;
 
 // For button software debounce:
 unsigned long lastButtonPressTime = 0;
@@ -98,8 +96,9 @@ volatile bool uiDirty = true; // Flag to trigger UI redraw
 // ActiveOperationType is now defined in ui_components.h
 
 enum UIState {
+  STATE_BOOTING,
   STATE_MAIN_MENU,
-  STATE_MANUAL_RUN,        
+  STATE_MANUAL_RUN,
   STATE_CYCLES_MENU,
   STATE_CYCLE_A_MENU,
   STATE_CYCLE_B_MENU,
@@ -117,7 +116,7 @@ enum UIState {
   STATE_TEST_MODE
 };
 
-UIState currentState = STATE_MAIN_MENU;
+UIState currentState = STATE_BOOTING;
 const int UI_STATE_STACK_SIZE = 10;
 UIState uiStateStack[UI_STATE_STACK_SIZE];
 int uiStateStackPtr = -1;
@@ -280,23 +279,6 @@ static int zoneEditScrollOffset = 0; // For scrolling through zones in cycle con
 #define MIN_YEAR  2020
 #define MAX_YEAR  2050
 
-// -----------------------------------------------------------------------------
-//                           WiFi and NTP Configuration
-// -----------------------------------------------------------------------------
-Preferences preferences;
-bool wifiConnected = false;
-bool timeSync = false;
-unsigned long lastNTPSync = 0;
-const unsigned long NTP_SYNC_INTERVAL = 3600000; // Sync every hour (in milliseconds)
-
-// NTP Configuration
-const char* ntpServer = "pool.ntp.org";
-const long gmtOffset_sec = 7200;     // GMT+2 for Botswana (adjust as needed)
-const int daylightOffset_sec = 0;    // No daylight saving in Botswana
-
-// WiFi credentials storage keys
-const char* WIFI_SSID_KEY = "wifi_ssid";
-const char* WIFI_PASS_KEY = "wifi_pass";
 
 // Global instance for main menu
 ScrollableList mainMenuScrollList;
@@ -354,15 +336,6 @@ void updateTestMode();
 void drawTestModeMenu();
 void stopTestMode();
 
-// WiFi and NTP functions
-void initWiFi();
-void connectToWiFi();
-void syncTimeWithNTP();
-void updateTimeFromNTP();
-void updateSystemTimeFromNTP();
-void resetWiFiCredentials();
-void executeWiFiPortalSetup(); // Renamed from startWiFiSetup
-void attemptAutoConnect();
 
 
 // -----------------------------------------------------------------------------
@@ -370,6 +343,7 @@ void attemptAutoConnect();
 // -----------------------------------------------------------------------------
 void setup() {
   Serial.begin(115200);
+  delay(100); // Allow serial to initialize
   DEBUG_PRINTLN("=== IRRIGATION CONTROLLER STARTUP ===");
   DEBUG_PRINTF("Firmware Version: v1.0\n");
   DEBUG_PRINTF("Hardware: ESP32-C6\n");
@@ -410,21 +384,11 @@ void setup() {
     DEBUG_PRINTF("Relay %d (pin %d): OFF\n", i, relayPins[i]);
   }
 
-  // Initialize preferences for WiFi storage
-  DEBUG_PRINTLN("Initializing preferences...");
-  preferences.begin("irrigation", false);
+  // Initialize WiFi Manager. It will start connecting if credentials are saved.
+  wifi_manager_init();
 
-  // Start in main menu (WiFi setup is now optional via Settings menu)
-  DEBUG_PRINTLN("Entering main menu state...");
+  // Move to appropriate state
   navigateTo(STATE_MAIN_MENU);
-
-  // Initialize WiFi and Web Server if enabled/configured
-  // For now, we assume WiFiManager handles connection.
-  // Web server should start after a successful connection.
-  // The initWiFi() function already attempts to connect.
-  // We'll call initWebServer() from within connectToWiFi() after success.
-  // So, no direct call to initWebServer() here, but ensure connectToWiFi() does it.
-  attemptAutoConnect();
   DEBUG_PRINTLN("=== STARTUP COMPLETE ===");
 }
 
@@ -480,10 +444,22 @@ void loop() {
     isScreenDimmed = true;
   }
 
+  // Handle WiFi and NTP updates
+  wifi_manager_handle();
+
+  if (encoder_button_pressed) {
+    wifi_manager_cancel_connection();
+    encoder_button_pressed = false; // Reset flag
+  }
+
+  // If we were connecting and now we are not, move to main menu
+  if (wifi_manager_is_connecting() == false && currentState == STATE_BOOTING) {
+    navigateTo(STATE_MAIN_MENU);
+  }
+
   // Update time - use NTP if available, otherwise software clock
-  if (timeSync) {
-    updateTimeFromNTP(); // Check for periodic NTP sync
-    updateSystemTimeFromNTP(); // Update our time structure from system time
+  if (wifi_manager_is_time_synced()) {
+    wifi_manager_update_system_time(currentDateTime); // Update our time structure from system time
   } else {
     updateSoftwareClock(); // Fallback to software clock
   }
@@ -495,7 +471,7 @@ void loop() {
   render();
 
   // Handle web server client requests
-  if (wifiConnected) { // Only handle if WiFi is connected
+  if (wifi_manager_is_connected()) { // Only handle if WiFi is connected
     server.handleClient();
   }
 
@@ -654,6 +630,7 @@ void handleButtonPress() {
     if ((now - lastButtonPressTime) > buttonDebounce) {
       lastButtonPressTime = now;
       DEBUG_PRINTF("Button pressed in state %d\n", currentState);
+      encoder_button_pressed = true;
 
       // Restore screen brightness on activity
       if (isScreenDimmed) {
@@ -735,7 +712,9 @@ void handleButtonPress() {
         
         case STATE_WIFI_SETUP_LAUNCHER:
           if (selectedWiFiSetupLauncherIndex == 0) { // "Start WiFi Portal"
-            executeWiFiPortalSetup();
+            wifi_manager_start_portal();
+            // After portal, return to settings
+            navigateTo(STATE_SETTINGS);
           } else { // "Back"
             goBack();
           }
@@ -1001,8 +980,7 @@ void navigateTo(UIState newState, bool isNavigatingBack) {
       DEBUG_PRINTLN("Entering WiFi Setup Launcher");
       break;
     case STATE_WIFI_RESET:
-      DEBUG_PRINTLN("Resetting WiFi credentials");
-      drawWiFiResetMenu();
+      drawWiFiResetMenu(); // This screen shows info, then the manager handles reset
       break;
     case STATE_SYSTEM_INFO:
       DEBUG_PRINTLN("Displaying system information");
@@ -1141,7 +1119,7 @@ void updateSoftwareClock() {
 
 // Helper to get current day of week.
 DayOfWeek getCurrentDayOfWeek() {
-  if (timeSync) {
+  if (wifi_manager_is_time_synced()) {
     // If synced with NTP, use the library's day of the week
     time_t now;
     struct tm timeinfo;
@@ -1754,205 +1732,6 @@ void drawCycleRunningMenu() {
   canvas.println("Press button to stop cycle");
 }
 
-// -----------------------------------------------------------------------------
-//                           WiFi and NTP Functions
-// -----------------------------------------------------------------------------
-void initWiFi() {
-  DEBUG_PRINTLN("=== WiFi Initialization with WiFiManager ===");
-  
-  // Initialize preferences
-  preferences.begin("irrigation", false);
-  
-  // Create WiFiManager instance
-  WiFiManager wm;
-  
-  // Set debug output
-  wm.setDebugOutput(DEBUG_ENABLED);
-  
-  // Set timeout for configuration portal (3 minutes)
-  wm.setConfigPortalTimeout(180);
-  
-  // Set custom AP name and password
-  wm.setAPStaticIPConfig(IPAddress(192,168,4,1), IPAddress(192,168,4,1), IPAddress(255,255,255,0));
-  
-  // Display WiFi setup message on screen
-  canvas.fillScreen(COLOR_RGB565_BLACK);
-  canvas.setTextSize(2);
-  canvas.setTextColor(COLOR_RGB565_YELLOW);
-  canvas.setCursor(10, 10);
-  canvas.println("WiFi Setup");
-  canvas.setTextColor(COLOR_RGB565_WHITE);
-  canvas.setCursor(10, 50);
-  canvas.println("Connecting...");
-  updateScreen();
-  
-  DEBUG_PRINTLN("Attempting to connect to saved WiFi...");
-  
-  // Try to connect with saved credentials first
-  if (!wm.autoConnect("IrrigationController", "irrigation123")) {
-    DEBUG_PRINTLN("Failed to connect to WiFi");
-    
-    // Show captive portal instructions on display
-    canvas.fillScreen(COLOR_RGB565_BLACK);
-    canvas.setTextSize(2);
-    canvas.setTextColor(COLOR_RGB565_RED);
-    canvas.setCursor(10, 10);
-    canvas.println("WiFi Setup Required");
-    
-    canvas.setTextSize(1);
-    canvas.setTextColor(COLOR_RGB565_WHITE);
-    canvas.setCursor(10, 50);
-    canvas.println("1. Connect to WiFi:");
-    canvas.setCursor(10, 70);
-    canvas.println("   'IrrigationController'");
-    canvas.setCursor(10, 90);
-    canvas.println("2. Password: irrigation123");
-    canvas.setCursor(10, 110);
-    canvas.println("3. Open browser to:");
-    canvas.setCursor(10, 130);
-    canvas.println("   192.168.4.1");
-    canvas.setCursor(10, 150);
-    canvas.println("4. Configure your WiFi");
-    canvas.setCursor(10, 170);
-    canvas.println("5. Device will restart");
-    
-    canvas.setTextColor(COLOR_RGB565_YELLOW);
-    canvas.setCursor(10, 200);
-    canvas.println("Waiting for config...");
-    updateScreen();
-    
-    wifiConnected = false;
-    DEBUG_PRINTLN("WiFi configuration portal started");
-    DEBUG_PRINTLN("Connect to 'IrrigationController' AP");
-    DEBUG_PRINTLN("Password: irrigation123");
-    DEBUG_PRINTLN("Open browser to 192.168.4.1");
-    
-    // If we reach here, either config was successful or timed out
-    if (WiFi.status() == WL_CONNECTED) {
-      connectToWiFi();
-    } else {
-      DEBUG_PRINTLN("WiFi configuration timed out - continuing without WiFi");
-      canvas.fillScreen(COLOR_RGB565_BLACK);
-      canvas.setTextSize(2);
-      canvas.setTextColor(COLOR_RGB565_RED);
-      canvas.setCursor(10, 10);
-      canvas.println("WiFi Setup");
-      canvas.println("Timed Out");
-      canvas.setTextColor(COLOR_RGB565_WHITE);
-      canvas.setCursor(10, 80);
-      canvas.println("Continuing without");
-      canvas.println("internet time sync");
-      updateScreen();
-      delay(3000);
-    }
-  } else {
-    connectToWiFi();
-  }
-}
-
-void connectToWiFi() {
-  if (WiFi.status() == WL_CONNECTED) {
-    wifiConnected = true;
-    DEBUG_PRINTLN("WiFi connected successfully!");
-    DEBUG_PRINTF("SSID: %s\n", WiFi.SSID().c_str());
-    DEBUG_PRINTF("IP address: %s\n", WiFi.localIP().toString().c_str());
-    DEBUG_PRINTF("Signal strength: %d dBm\n", WiFi.RSSI());
-    
-    // Show success on display
-    canvas.fillScreen(COLOR_RGB565_BLACK);
-    canvas.setTextSize(2);
-    canvas.setTextColor(COLOR_RGB565_GREEN);
-    canvas.setCursor(10, 10);
-    canvas.println("WiFi Connected!");
-    
-    canvas.setTextSize(1);
-    canvas.setTextColor(COLOR_RGB565_WHITE);
-    canvas.setCursor(10, 50);
-    canvas.printf("SSID: %s\n", WiFi.SSID().c_str());
-    canvas.setCursor(10, 70);
-    canvas.printf("IP: %s\n", WiFi.localIP().toString().c_str());
-    canvas.setCursor(10, 90);
-    canvas.println("Syncing time...");
-    
-  // Initialize NTP
-  syncTimeWithNTP();
-  
-  // Show final status
-  canvas.setCursor(10, 110);
-  if (timeSync) {
-    canvas.setTextColor(COLOR_RGB565_GREEN);
-    canvas.println("Time sync: SUCCESS");
-  } else {
-    canvas.setTextColor(COLOR_RGB565_YELLOW);
-    canvas.println("Time sync: FAILED");
-  }
-
-  // Initialize Web Server
-  initWebServer(); // Call this after WiFi is confirmed connected.
-
-  st7789_push_canvas(canvas.getBuffer(), 320, 240); // Use new driver
-  delay(2000);
-} else {
-  wifiConnected = false;
-  DEBUG_PRINTLN("WiFi connection failed");
-}
-}
-
-void syncTimeWithNTP() {
-  if (!wifiConnected) {
-    DEBUG_PRINTLN("Cannot sync time - WiFi not connected");
-    return;
-  }
-  
-  DEBUG_PRINTLN("Initializing NTP time synchronization...");
-  configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
-  
-  // Wait for time to be set
-  int attempts = 0;
-  while (!time(nullptr) && attempts < 10) {
-    DEBUG_PRINT(".");
-    delay(1000);
-    attempts++;
-  }
-  
-  if (time(nullptr)) {
-    timeSync = true;
-    lastNTPSync = millis();
-    updateSystemTimeFromNTP();
-    DEBUG_PRINTLN("\nNTP time synchronization successful!");
-  } else {
-    DEBUG_PRINTLN("\nFailed to synchronize with NTP server");
-  }
-}
-
-void updateTimeFromNTP() {
-  // Check if it's time to sync again
-  if (wifiConnected && timeSync && (millis() - lastNTPSync > NTP_SYNC_INTERVAL)) {
-    DEBUG_PRINTLN("Performing periodic NTP sync...");
-    syncTimeWithNTP();
-  }
-}
-
-void updateSystemTimeFromNTP() {
-  if (!timeSync) return;
-  
-  time_t now;
-  struct tm timeinfo;
-  time(&now);
-  localtime_r(&now, &timeinfo);
-  
-  // Update our system time structure
-  currentDateTime.year = timeinfo.tm_year + 1900;
-  currentDateTime.month = timeinfo.tm_mon + 1;
-  currentDateTime.day = timeinfo.tm_mday;
-  currentDateTime.hour = timeinfo.tm_hour;
-  currentDateTime.minute = timeinfo.tm_min;
-  currentDateTime.second = timeinfo.tm_sec;
-  
-  DEBUG_PRINTF("System time updated from NTP: %04d-%02d-%02d %02d:%02d:%02d\n",
-    currentDateTime.year, currentDateTime.month, currentDateTime.day,
-    currentDateTime.hour, currentDateTime.minute, currentDateTime.second);
-}
 
 // -----------------------------------------------------------------------------
 //                           Settings Menu Functions
@@ -1966,12 +1745,12 @@ void drawSettingsMenu() {
 
   // WiFi Status & IP Address
   canvas.setCursor(10, yPos);
-  if (wifiConnected) {
+  if (wifi_manager_is_connected()) {
     canvas.setTextColor(COLOR_RGB565_GREEN);
-    canvas.printf("WiFi: %s", WiFi.SSID().c_str());
+    canvas.printf("WiFi: %s", wifi_manager_get_ssid().c_str());
     yPos += 12; // Move down for next line
     canvas.setCursor(10, yPos);
-    canvas.printf("IP: %s", WiFi.localIP().toString().c_str());
+    canvas.printf("IP: %s", wifi_manager_get_ip().c_str());
   } else {
     canvas.setTextColor(COLOR_RGB565_RED);
     canvas.println("WiFi: Not Connected");
@@ -1983,7 +1762,7 @@ void drawSettingsMenu() {
 
   // Time Sync Status
   canvas.setCursor(10, yPos);
-  if (timeSync) {
+  if (wifi_manager_is_time_synced()) {
     canvas.setTextColor(COLOR_RGB565_GREEN);
     canvas.println("Time: NTP Synced");
   } else {
@@ -2011,77 +1790,6 @@ void drawWiFiSetupLauncherMenu() { // Renamed from drawWiFiSetupMenu
   drawScrollableList(canvas, wifiSetupLauncherScrollList, true);
 }
 
-void executeWiFiPortalSetup() { // Renamed from startWiFiSetup
-  canvas.fillScreen(COLOR_RGB565_BLACK);
-  canvas.setTextSize(2);
-  canvas.setTextColor(COLOR_RGB565_YELLOW);
-  canvas.setCursor(10, 10);
-  canvas.println("WiFi Setup");
-
-  canvas.setTextColor(COLOR_RGB565_WHITE);
-  canvas.setCursor(10, 50);
-  canvas.println("Starting WiFi");
-  canvas.println("configuration...");
-  st7789_push_canvas(canvas.getBuffer(), 320, 240); // Use new driver
-
-  DEBUG_PRINTLN("=== Manual WiFi Setup ===");
-  
-  // Create WiFiManager instance
-  WiFiManager wm;
-  wm.setDebugOutput(DEBUG_ENABLED);
-  wm.setConfigPortalTimeout(180); // 3 minutes
-  
-  // Show setup instructions
-  canvas.fillScreen(COLOR_RGB565_BLACK);
-  canvas.setTextSize(2);
-  canvas.setTextColor(COLOR_RGB565_YELLOW);
-  canvas.setCursor(10, 10);
-  canvas.println("WiFi Setup Portal");
-  
-  canvas.setTextSize(1);
-  canvas.setTextColor(COLOR_RGB565_WHITE);
-  canvas.setCursor(10, 50);
-  canvas.println("1. Connect to WiFi:");
-  canvas.setCursor(10, 70);
-  canvas.println("   'IrrigationController'");
-  canvas.setCursor(10, 90);
-  canvas.println("2. Password: irrigation123");
-  canvas.setCursor(10, 110);
-  canvas.println("3. Open browser to:");
-  canvas.setCursor(10, 130);
-  canvas.println("   192.168.4.1");
-  canvas.setCursor(10, 150);
-  canvas.println("4. Configure your WiFi");
-  
-  canvas.setTextColor(COLOR_RGB565_YELLOW);
-  canvas.setCursor(10, 180);
-  canvas.println("Starting portal...");
-  st7789_push_canvas(canvas.getBuffer(), 320, 240); // Use new driver
-  
-  // Start configuration portal
-  if (wm.startConfigPortal("IrrigationController", "irrigation123")) {
-    DEBUG_PRINTLN("WiFi configuration successful!");
-    wifiConnected = true;
-    connectToWiFi();
-  } else {
-    DEBUG_PRINTLN("WiFi configuration failed or timed out");
-    canvas.fillScreen(COLOR_RGB565_BLACK);
-    canvas.setTextSize(2);
-    canvas.setTextColor(COLOR_RGB565_RED);
-    canvas.setCursor(10, 10);
-    canvas.println("WiFi Setup");
-    canvas.println("Failed");
-    canvas.setTextColor(COLOR_RGB565_WHITE);
-    canvas.setCursor(10, 80);
-    canvas.println("Try again later");
-    st7789_push_canvas(canvas.getBuffer(), 320, 240); // Use new driver
-    delay(2000);
-  }
-  
-  // Return to settings menu
-  navigateTo(STATE_SETTINGS);
-}
-
 void drawWiFiResetMenu() {
   canvas.fillScreen(COLOR_RGB565_BLACK);
   canvas.setTextSize(2);
@@ -2091,24 +1799,14 @@ void drawWiFiResetMenu() {
 
   canvas.setTextColor(COLOR_RGB565_WHITE);
   canvas.setCursor(10, 50);
-  canvas.println("Clearing saved");
-  canvas.println("WiFi credentials...");
+  canvas.println("Clearing saved WiFi");
+  canvas.println("credentials and");
+  canvas.println("restarting device...");
 
-  DEBUG_PRINTLN("=== WiFi Reset ===");
-  resetWiFiCredentials();
+  st7789_push_canvas(canvas.getBuffer(), 320, 240);
+  delay(3000); // Show message for 3 seconds
 
-  canvas.setTextColor(COLOR_RGB565_GREEN);
-  canvas.setCursor(10, 120);
-  canvas.println("WiFi credentials");
-  canvas.println("cleared!");
-
-  canvas.setTextColor(COLOR_RGB565_WHITE);
-  canvas.setCursor(10, 180);
-  canvas.println("Use 'WiFi Setup' to");
-  canvas.println("configure new network");
-  st7789_push_canvas(canvas.getBuffer(), 320, 240); // Use new driver
-  delay(3000);
-  navigateTo(STATE_SETTINGS);
+  wifi_manager_reset_credentials(); // This will restart the device
 }
 
 void drawSystemInfoMenu() {
@@ -2138,30 +1836,25 @@ void drawSystemInfoMenu() {
   canvas.println("=== Network ===");
   y += 15;
   
-  if (wifiConnected) {
+  if (wifi_manager_is_connected()) {
     canvas.setCursor(10, y);
-    canvas.printf("SSID: %s", WiFi.SSID().c_str());
+    canvas.printf("SSID: %s", wifi_manager_get_ssid().c_str());
     y += 12;
     
     canvas.setCursor(10, y);
-    canvas.printf("IP: %s", WiFi.localIP().toString().c_str());
+    canvas.printf("IP: %s", wifi_manager_get_ip().c_str());
     y += 12;
     
     canvas.setCursor(10, y);
-    canvas.printf("Signal: %d dBm", WiFi.RSSI());
+    canvas.printf("Signal: %d dBm", wifi_manager_get_rssi());
     y += 12;
     
     canvas.setCursor(10, y);
-    canvas.printf("MAC: %s", WiFi.macAddress().c_str());
+    canvas.printf("MAC: %s", wifi_manager_get_mac_address().c_str());
     y += 20;
   } else {
     canvas.setCursor(10, y);
     canvas.println("WiFi: Not Connected");
-    y += 12;
-    // Display saved SSID even if not connected
-    String savedSSID = preferences.getString(WIFI_SSID_KEY, "Not Set");
-    canvas.setCursor(10, y);
-    canvas.printf("Saved SSID: %s", savedSSID.c_str());
     y += 20;
   }
 
@@ -2170,11 +1863,16 @@ void drawSystemInfoMenu() {
   y += 15;
   
   canvas.setCursor(10, y);
-  if (timeSync) {
+  if (wifi_manager_is_time_synced()) {
     canvas.println("Source: NTP Server");
     y += 12;
     canvas.setCursor(10, y);
-    canvas.printf("Last Sync: %lu min ago", (millis() - lastNTPSync) / 60000);
+    unsigned long lastSyncMillis = wifi_manager_get_last_ntp_sync();
+    if (lastSyncMillis > 0) {
+        canvas.printf("Last Sync: %lu min ago", (millis() - lastSyncMillis) / 60000);
+    } else {
+        canvas.print("Last Sync: Never");
+    }
   } else {
     canvas.println("Source: Software Clock");
   }
@@ -2185,44 +1883,7 @@ void drawSystemInfoMenu() {
   canvas.println("Press button to return");
 }
 
-void resetWiFiCredentials() {
-  DEBUG_PRINTLN("Clearing WiFi credentials from preferences...");
-  preferences.remove(WIFI_SSID_KEY);
-  preferences.remove(WIFI_PASS_KEY);
-  
-  // Also clear WiFiManager saved credentials
-  WiFiManager wm;
-  wm.resetSettings();
-  
-  // Disconnect current WiFi
-  WiFi.disconnect(true);
-  wifiConnected = false;
-  timeSync = false;
-  
-  DEBUG_PRINTLN("WiFi credentials cleared successfully");
-}
 
-void attemptAutoConnect() {
-  DEBUG_PRINTLN("Attempting to auto-connect to WiFi...");
-
-  // Set a short timeout for the connection attempt
-  WiFi.begin();
-  int attempts = 0;
-  while (WiFi.status() != WL_CONNECTED && attempts < 20) { // ~10 second timeout
-    delay(500);
-    DEBUG_PRINT(".");
-    attempts++;
-  }
-
-  if (WiFi.status() == WL_CONNECTED) {
-    DEBUG_PRINTLN("\nAuto-connect successful!");
-    connectToWiFi(); // This handles NTP, web server, etc.
-  } else {
-    DEBUG_PRINTLN("\nAuto-connect failed. Proceeding without WiFi.");
-    WiFi.disconnect(true); // Disconnect to avoid further attempts
-    wifiConnected = false;
-  }
-}
 
 
 // -----------------------------------------------------------------------------
