@@ -540,24 +540,3 @@ void initWebServer() {
     server.begin();
     Serial.println("HTTP server started using WebServer library");
 }
-
-
-void initWebServer() {
-    // Route for root / web page
-    server.on("/", HTTP_GET, handleRoot);
-
-    // API routes
-    server.on("/api/status", HTTP_GET, handleGetStatus);
-    server.on("/api/time", HTTP_GET, handleGetTime); // Get current time
-    server.on("/api/time", HTTP_POST, handleSetTime); // Set time (supports form-data or JSON body)
-    server.on("/api/cycles", HTTP_GET, handleGetCycles); // Get all cycle configs
-    server.on("/api/cycle", HTTP_POST, handleSetCycle);  // Set a specific cycle config (JSON body)
-    server.on("/api/manual", HTTP_POST, handleManualControl); // Manual zone/cycle start/stop (JSON body)
-
-
-    server.onNotFound(handleNotFound);
-
-    // Start server
-    server.begin();
-    Serial.println("HTTP server started");
-}

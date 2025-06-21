@@ -87,6 +87,12 @@ bool isScreenDimmed = false;
 volatile bool uiDirty = true; // Flag to trigger UI redraw
 
 // -----------------------------------------------------------------------------
+//                        Current Sensing Pin / Configuration
+// -----------------------------------------------------------------------------
+// const int CurrentSensorPin = 8; 
+
+
+// -----------------------------------------------------------------------------
 //                           Menu and Cycle States
 // -----------------------------------------------------------------------------
 // ActiveOperationType is now defined in ui_components.h
@@ -776,6 +782,11 @@ void handleButtonPress() {
           DEBUG_PRINTLN("Cancelling test mode");
           stopTestMode();
           navigateTo(STATE_MAIN_MENU);
+          break;
+
+        case STATE_SYSTEM_INFO:
+          DEBUG_PRINTLN("Exiting system info screen");
+          goBack();
           break;
 
         default:
@@ -2108,21 +2119,17 @@ void drawSystemInfoMenu() {
   canvas.setTextSize(1);
   canvas.setTextColor(COLOR_RGB565_WHITE);
   
-  int y = 50;
+  int y = 40; // Adjusted starting y
   canvas.setCursor(10, y);
   canvas.println("=== Hardware ===");
   y += 15;
   
   canvas.setCursor(10, y);
-  canvas.println("Board: ESP32-C6");
+  canvas.printf("Board: ESP32-C6, Rev: %d", ESP.getChipRevision());
   y += 12;
   
   canvas.setCursor(10, y);
-  canvas.printf("Free Heap: %d bytes\n", ESP.getFreeHeap());
-  y += 12;
-  
-  canvas.setCursor(10, y);
-  canvas.printf("Chip Rev: %d\n", ESP.getChipRevision());
+  canvas.printf("Free Heap: %d bytes", ESP.getFreeHeap());
   y += 20;
 
   canvas.setCursor(10, y);
@@ -2131,19 +2138,19 @@ void drawSystemInfoMenu() {
   
   if (wifiConnected) {
     canvas.setCursor(10, y);
-    canvas.printf("SSID: %s\n", WiFi.SSID().c_str());
+    canvas.printf("SSID: %s", WiFi.SSID().c_str());
     y += 12;
     
     canvas.setCursor(10, y);
-    canvas.printf("IP: %s\n", WiFi.localIP().toString().c_str());
+    canvas.printf("IP: %s", WiFi.localIP().toString().c_str());
     y += 12;
     
     canvas.setCursor(10, y);
-    canvas.printf("Signal: %d dBm\n", WiFi.RSSI());
+    canvas.printf("Signal: %d dBm", WiFi.RSSI());
     y += 12;
     
     canvas.setCursor(10, y);
-    canvas.printf("MAC: %s\n", WiFi.macAddress().c_str());
+    canvas.printf("MAC: %s", WiFi.macAddress().c_str());
     y += 20;
   } else {
     canvas.setCursor(10, y);
@@ -2160,23 +2167,15 @@ void drawSystemInfoMenu() {
     canvas.println("Source: NTP Server");
     y += 12;
     canvas.setCursor(10, y);
-    canvas.printf("Last Sync: %lu min ago\n", (millis() - lastNTPSync) / 60000);
+    canvas.printf("Last Sync: %lu min ago", (millis() - lastNTPSync) / 60000);
   } else {
     canvas.println("Source: Software Clock");
   }
 
   // Instructions
   canvas.setTextColor(COLOR_RGB565_YELLOW);
-  canvas.setCursor(10, 220);
+  canvas.setCursor(10, 225);
   canvas.println("Press button to return");
-
-  // Wait for button press
-  while (digitalRead(button) == HIGH) {
-    delay(50);
-  }
-  delay(200); // Debounce
-  
-  navigateTo(STATE_SETTINGS);
 }
 
 void resetWiFiCredentials() {
