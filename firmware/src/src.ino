@@ -362,6 +362,8 @@ void updateTimeFromNTP();
 void updateSystemTimeFromNTP();
 void resetWiFiCredentials();
 void executeWiFiPortalSetup(); // Renamed from startWiFiSetup
+void attemptAutoConnect();
+
 
 // -----------------------------------------------------------------------------
 //                                     SETUP
@@ -422,7 +424,7 @@ void setup() {
   // The initWiFi() function already attempts to connect.
   // We'll call initWebServer() from within connectToWiFi() after success.
   // So, no direct call to initWebServer() here, but ensure connectToWiFi() does it.
-
+  attemptAutoConnect();
   DEBUG_PRINTLN("=== STARTUP COMPLETE ===");
 }
 
@@ -2155,6 +2157,11 @@ void drawSystemInfoMenu() {
   } else {
     canvas.setCursor(10, y);
     canvas.println("WiFi: Not Connected");
+    y += 12;
+    // Display saved SSID even if not connected
+    String savedSSID = preferences.getString(WIFI_SSID_KEY, "Not Set");
+    canvas.setCursor(10, y);
+    canvas.printf("Saved SSID: %s", savedSSID.c_str());
     y += 20;
   }
 
@@ -2194,6 +2201,29 @@ void resetWiFiCredentials() {
   
   DEBUG_PRINTLN("WiFi credentials cleared successfully");
 }
+
+void attemptAutoConnect() {
+  DEBUG_PRINTLN("Attempting to auto-connect to WiFi...");
+
+  // Set a short timeout for the connection attempt
+  WiFi.begin();
+  int attempts = 0;
+  while (WiFi.status() != WL_CONNECTED && attempts < 20) { // ~10 second timeout
+    delay(500);
+    DEBUG_PRINT(".");
+    attempts++;
+  }
+
+  if (WiFi.status() == WL_CONNECTED) {
+    DEBUG_PRINTLN("\nAuto-connect successful!");
+    connectToWiFi(); // This handles NTP, web server, etc.
+  } else {
+    DEBUG_PRINTLN("\nAuto-connect failed. Proceeding without WiFi.");
+    WiFi.disconnect(true); // Disconnect to avoid further attempts
+    wifiConnected = false;
+  }
+}
+
 
 // -----------------------------------------------------------------------------
 //                           TEST MODE FUNCTIONS
