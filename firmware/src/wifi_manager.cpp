@@ -6,8 +6,6 @@
 #include "web_server.h"
 #include "ui_components.h"
 #include "st7789_dma_driver.h"
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
 
 #define DEBUG_ENABLED true
 
@@ -35,9 +33,7 @@ static const long gmtOffset_sec = 7200;
 static const int daylightOffset_sec = 0;
 static bool isConnecting = false;
 static bool portalRunning = false;
-static TaskHandle_t wifi_task_handle = NULL;
 
-static void wifi_task(void *pvParameters);
 static void sync_time_with_ntp();
 static void display_wifi_info();
 static void display_portal_info();
@@ -45,11 +41,43 @@ static void display_connection_success();
 static void display_connection_failure(const char* reason);
 
 void wifi_manager_init() {
-    DEBUG_PRINTLN("Initializing WiFi Manager...");
-    xTaskCreate(wifi_task, "WiFiTask", 4096, NULL, 1, &wifi_task_handle);
+    DEBUG_PRINTLN("Initializing WiFi Manager in blocking mode...");
+    
+    isConnecting = true;
+    display_wifi_info();
+
+    wm.setDebugOutput(DEBUG_ENABLED);
+    wm.setConfigPortalTimeout(180);
+    wm.setConnectTimeout(20);
+
+    // Custom callback to allow cancellation, though it's less effective in a blocking setup
+    wm.setAPCallback([](WiFiManager* myWiFiManager) {
+        DEBUG_PRINTLN("Entered config portal mode");
+        portalRunning = true;
+        display_portal_info();
+    });
+
+    // This is a blocking call. It will return when connected or timed out.
+    bool res = wm.autoConnect("IrrigationControllerAP", "password123");
+
+    if (res) {
+        DEBUG_PRINTLN("WiFi connected successfully via autoConnect!");
+        wifiConnected = true;
+        display_connection_success();
+        sync_time_with_ntp();
+        
+    } else {
+        DEBUG_PRINTLN("Failed to connect and hit timeout.");
+        wifiConnected = false;
+        display_connection_failure("Auto-connect failed");
+    }
+
+    isConnecting = false;
+    portalRunning = false;
 }
 
 void wifi_manager_handle() {
+    // This is now only needed if the portal is running
     if (portalRunning) {
         wm.process();
     }
@@ -95,30 +123,28 @@ unsigned long wifi_manager_get_last_ntp_sync() {
 }
 
 void wifi_manager_start_portal() {
-    if (isConnecting || portalRunning) {
-        DEBUG_PRINTLN("Portal or connection already in progress. Cannot start new portal.");
-        return;
-    }
     DEBUG_PRINTLN("Manual portal start requested.");
-    portalRunning = true;
-    isConnecting = true; // To reflect in UI
     
+    // Temporarily disconnect to start the portal
+    if(wifiConnected) {
+        WiFi.disconnect();
+        wifiConnected = false;
+    }
+
     display_portal_info();
 
+    // This is a blocking call
     if (wm.startConfigPortal("IrrigationControllerAP", "password123")) {
         DEBUG_PRINTLN("WiFi config successful via manual portal!");
         wifiConnected = true;
-        isConnecting = false;
-        portalRunning = false;
         display_connection_success();
         sync_time_with_ntp();
-        initWebServer();
     } else {
         DEBUG_PRINTLN("WiFi config failed or timed out.");
-        wifiConnected = false;
-        isConnecting = false;
-        portalRunning = false;
         display_connection_failure("Portal timed out");
+        // Try to reconnect with old credentials if they exist
+        wm.autoConnect();
+        wifiConnected = WiFi.isConnected();
     }
 }
 
@@ -130,24 +156,16 @@ void wifi_manager_reset_credentials() {
 }
 
 void wifi_manager_cancel_connection() {
-    if (isConnecting) {
+    // This is harder to implement reliably in a fully blocking model from setup()
+    // For now, we rely on the portal timeout.
+    if (isConnecting && portalRunning) {
         DEBUG_PRINTLN("Connection cancellation requested.");
-        if (portalRunning) {
-            wm.stopConfigPortal();
-            portalRunning = false;
-            isConnecting = false;
-            wifiConnected = false;
-            display_connection_failure("Cancelled");
-            DEBUG_PRINTLN("Portal stopped by user.");
-        } else {
-            vTaskDelete(wifi_task_handle);
-            wifi_task_handle = NULL;
-            isConnecting = false;
-            wifiConnected = false;
-            WiFi.disconnect(true);
-            display_connection_failure("Cancelled");
-            DEBUG_PRINTLN("Auto-connect cancelled by user.");
-        }
+        wm.stopConfigPortal();
+        portalRunning = false;
+        isConnecting = false;
+        wifiConnected = false;
+        display_connection_failure("Cancelled");
+        DEBUG_PRINTLN("Portal stopped by user.");
     }
 }
 
@@ -163,42 +181,6 @@ void wifi_manager_update_system_time(SystemDateTime& dateTime) {
     dateTime.hour = timeinfo.tm_hour;
     dateTime.minute = timeinfo.tm_min;
     dateTime.second = timeinfo.tm_sec;
-}
-
-static void wifi_task(void *pvParameters) {
-    isConnecting = true;
-    
-    display_wifi_info();
-
-    wm.setDebugOutput(DEBUG_ENABLED);
-    wm.setConfigPortalTimeout(180);
-    wm.setConnectTimeout(20);
-
-    // Custom callback to allow cancellation
-    wm.setAPCallback([](WiFiManager* myWiFiManager) {
-        DEBUG_PRINTLN("Entered config portal mode");
-        portalRunning = true;
-        display_portal_info();
-    });
-
-    // This is a blocking call. It will return when connected or timed out.
-    bool res = wm.autoConnect("IrrigationControllerAP", "password123");
-
-    if (res) {
-        DEBUG_PRINTLN("WiFi connected successfully via autoConnect!");
-        wifiConnected = true;
-        display_connection_success();
-        sync_time_with_ntp();
-        initWebServer();
-    } else {
-        DEBUG_PRINTLN("Failed to connect and hit timeout.");
-        wifiConnected = false;
-        display_connection_failure("Auto-connect failed");
-    }
-
-    isConnecting = false;
-    portalRunning = false;
-    vTaskDelete(NULL); // End of task
 }
 
 static void sync_time_with_ntp() {

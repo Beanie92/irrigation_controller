@@ -1,11 +1,11 @@
 #ifndef WEB_SERVER_H
 #define WEB_SERVER_H
 
-#include <WebServer.h> // Changed from ESPAsyncWebServer
+#include <ESPAsyncWebServer.h>
 #include <ArduinoJson.h>
 #include "ui_components.h" // For SystemDateTime, CycleConfig, DayOfWeek, ZONE_COUNT
 
-extern WebServer server; // Declare the server object as extern
+extern AsyncWebServer server; // Declare the server object as extern
 
 // Forward declarations of functions from src.ino that web server might need to call
 extern void startManualZone(int zoneIdx);
@@ -26,16 +26,14 @@ extern bool relayStates[]; // To show current status of relays
 
 // Web server functions
 void initWebServer();
-void handleRoot(); // Signature changed
-void handleNotFound(); // Signature changed
+void handleRoot(AsyncWebServerRequest *request);
+void handleNotFound(AsyncWebServerRequest *request);
 
-// API Handlers - Signatures will change in .cpp
-void handleGetStatus();
-void handleGetTime();
-void handleSetTime();
-void handleGetCycles();
-void handleSetCycle(); 
-void handleManualControl();
+// API Handlers
+void handleGetStatus(AsyncWebServerRequest *request);
+void handleGetCycles(AsyncWebServerRequest *request);
+void handleSetCycle(AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total);
+void handleManualControl(AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total);
 
 // Helper to convert DayOfWeek bitmask to string
 String dayOfWeekToString(uint8_t daysActive);

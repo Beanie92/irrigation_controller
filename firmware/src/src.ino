@@ -1,6 +1,5 @@
 #include <Arduino.h>
 #include "st7789_dma_driver.h" // Replaced DFRobot_GDL.h
-#include "logo.h"
 #include "ui_components.h"
 #include "web_server.h" // Include the web server header
 #include "wifi_manager.h" // Include the new WiFi manager
@@ -343,7 +342,10 @@ void stopTestMode();
 // -----------------------------------------------------------------------------
 void setup() {
   Serial.begin(115200);
-  delay(100); // Allow serial to initialize
+  // while (!Serial) {
+  //   delay(10); // Wait for serial port to connect. Needed for native USB
+  // }
+  delay(1000); // Allow serial to initialize
   DEBUG_PRINTLN("=== IRRIGATION CONTROLLER STARTUP ===");
   DEBUG_PRINTF("Firmware Version: v1.0\n");
   DEBUG_PRINTF("Hardware: ESP32-C6\n");
@@ -362,9 +364,13 @@ void setup() {
   // Backlight is handled by st7789_init_display and st7789_set_backlight
   lastActivityTime = millis();
 
-  // Show logo for 3 seconds
-  DEBUG_PRINTLN("Displaying logo...");
-  drawLogo();
+  // Show a simple booting message instead of the logo
+  canvas.fillScreen(COLOR_RGB565_BLACK);
+  canvas.setTextSize(2);
+  canvas.setTextColor(COLOR_RGB565_WHITE);
+  canvas.setCursor(10, 10);
+  canvas.println("Booting...");
+  updateScreen();
   delay(3000);
 
   // Rotary encoder pins
@@ -387,6 +393,9 @@ void setup() {
   // Initialize WiFi Manager. It will start connecting if credentials are saved.
   wifi_manager_init();
 
+  // Initialize the Web Server
+  initWebServer();
+
   // Move to appropriate state
   navigateTo(STATE_MAIN_MENU);
   DEBUG_PRINTLN("=== STARTUP COMPLETE ===");
@@ -396,6 +405,16 @@ void setup() {
 //                                RENDER
 // -----------------------------------------------------------------------------
 void render() {
+  // Do not render if the screen is dimmed to prevent unnecessary SPI communication
+  if (isScreenDimmed) {
+    // If there's a pending UI update, we should probably just clear it
+    // so we don't draw a stale frame when the screen wakes up.
+    if (uiDirty) {
+      uiDirty = false;
+    }
+    return;
+  }
+
   if (!uiDirty) return;
 
   // Draw the current UI state to the canvas
@@ -438,16 +457,16 @@ void render() {
 // -----------------------------------------------------------------------------
 void loop() {
   // Handle screen dimming
-  if (!isScreenDimmed && (millis() - lastActivityTime > inactivityTimeout)) {
-    DEBUG_PRINTLN("Screen turning off due to inactivity.");
-    st7789_set_backlight(false); // Turn off backlight using driver
-    isScreenDimmed = true;
-  }
+  // if (!isScreenDimmed && (millis() - lastActivityTime > inactivityTimeout)) {
+  //   DEBUG_PRINTLN("Screen turning off due to inactivity.");
+  //   st7789_set_backlight(false); // Turn off backlight using driver
+  //   isScreenDimmed = true;
+  // }
 
   // Handle WiFi and NTP updates
   wifi_manager_handle();
-
-  if (encoder_button_pressed) {
+  
+  if (encoder_button_pressed && currentState == STATE_BOOTING) {
     wifi_manager_cancel_connection();
     encoder_button_pressed = false; // Reset flag
   }
@@ -470,10 +489,7 @@ void loop() {
   // Render the UI if needed
   render();
 
-  // Handle web server client requests
-  if (wifi_manager_is_connected()) { // Only handle if WiFi is connected
-    server.handleClient();
-  }
+  // Async web server handles clients automatically. No need to call handleClient().
 
   // Check for scheduled cycles if no other operation is active
   if (currentOperation == OP_NONE) {
@@ -486,8 +502,6 @@ void loop() {
           currentDateTime.second == 0) { // Trigger at the start of the minute
         DEBUG_PRINTF("Scheduled cycle %s triggered!\n", cfg->name);
         startCycleRun(i, OP_SCHEDULED_CYCLE);
-        // Add a small delay to prevent re-triggering in the same second
-        delay(1000); 
         break; // Only one cycle can start per second
       }
     }
@@ -1071,32 +1085,6 @@ void drawCycleSubMenu(const char* label) {
 // -----------------------------------------------------------------------------
 //                           LOGO DISPLAY
 // -----------------------------------------------------------------------------
-void drawLogo() {
-  canvas.fillScreen(COLOR_RGB565_WHITE);
-  
-  // Calculate position to center the logo
-  int x = (320 - LOGO_WIDTH) / 2;
-  int y = (240 - LOGO_HEIGHT) / 2;
-  
-  // Draw the logo image
-  for (int row = 0; row < LOGO_HEIGHT; row++) {
-    for (int col = 0; col < LOGO_WIDTH; col++) {
-      uint16_t pixel = logo_data[row * LOGO_WIDTH + col];
-      canvas.drawPixel(x + col, y + row, pixel);
-    }
-  }
-  
-  // Add version info below the logo
-  canvas.setTextSize(1);
-  canvas.setTextColor(COLOR_RGB565_BLACK);
-  canvas.setCursor(80, y + LOGO_HEIGHT + 20);
-  canvas.println("v1.0 - ESP32-C6");
-  
-  // Loading indicator
-  canvas.setCursor(90, y + LOGO_HEIGHT + 40);
-  canvas.println("Loading...");
-  updateScreen();
-}
 
 void updateScreen() {
   st7789_push_canvas(canvas.getBuffer(), 320, 240);

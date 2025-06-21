@@ -1,9 +1,9 @@
 #include "web_server.h"
-#include <WebServer.h>    // Changed from ESPAsyncWebServer
-#include <ArduinoJson.h>  // For JSON parsing and generation
+#include <ESPAsyncWebServer.h>
+#include <ArduinoJson.h>
 
 // Define the web server object
-WebServer server(80); // Changed from AsyncWebServer
+AsyncWebServer server(80);
 
 // HTML Page (served at root)
 const char index_html[] PROGMEM = R"rawliteral(
@@ -51,16 +51,6 @@ const char index_html[] PROGMEM = R"rawliteral(
     </div>
 
     <div class="section">
-      <h2>Set System Time</h2>
-      <label for="year">Year:</label><input type="number" id="year">
-      <label for="month">Month:</label><input type="number" id="month">
-      <label for="day">Day:</label><input type="number" id="day">
-      <label for="hour">Hour:</label><input type="number" id="hour">
-      <label for="minute">Minute:</label><input type="number" id="minute">
-      <button onclick="setTime()">Set Time</button>
-    </div>
-
-    <div class="section">
       <h2>Manual Control</h2>
       <label for="manualZone">Select Zone:</label>
       <select id="manualZone">
@@ -79,6 +69,10 @@ const char index_html[] PROGMEM = R"rawliteral(
     </div>
 
     <div id="message"></div>
+    <div class="section">
+      <h2>Test</h2>
+      <button onclick="testClick()">Test Button</button>
+    </div>
   </div>
 
 <script>
@@ -123,34 +117,6 @@ const char index_html[] PROGMEM = R"rawliteral(
         console.error('Error fetching status:', err);
         showMessage('Failed to load status.', 'error');
       });
-  }
-
-  function setTime() {
-    const data = {
-      year: parseInt(document.getElementById('year').value),
-      month: parseInt(document.getElementById('month').value),
-      day: parseInt(document.getElementById('day').value),
-      hour: parseInt(document.getElementById('hour').value),
-      minute: parseInt(document.getElementById('minute').value)
-    };
-    fetch('/api/time', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify(data)
-    })
-    .then(response => response.json())
-    .then(res => {
-      if(res.success) {
-        showMessage('Time updated successfully!', 'success');
-        fetchStatus(); // Refresh status
-      } else {
-        showMessage('Failed to update time: ' + (res.message || ''), 'error');
-      }
-    })
-    .catch(err => {
-        console.error('Error setting time:', err);
-        showMessage('Error setting time.', 'error');
-    });
   }
 
   function fetchCycles() {
@@ -312,6 +278,12 @@ const char index_html[] PROGMEM = R"rawliteral(
     fetchStatus();
     fetchCycles();
   };
+
+  function testClick() {
+    fetch('/api/test')
+      .then(response => response.text())
+      .then(text => console.log(text));
+  }
 </script>
 </body>
 </html>
@@ -344,17 +316,22 @@ uint8_t stringToDayOfWeek(String daysString) {
     return days;
 }
 
-void handleRoot() {
-    server.send_P(200, "text/html", index_html);
+void handleRoot(AsyncWebServerRequest *request) {
+    Serial.println("Handling root request.");
+    String html(index_html);
+    html.replace("${ZONE_COUNT}", String(ZONE_COUNT));
+    request->send(200, "text/html", html);
 }
 
-void handleNotFound() {
-    server.send(404, "text/plain", "Not found");
+void handleNotFound(AsyncWebServerRequest *request) {
+    Serial.printf("NOT FOUND: %s\n", request->url().c_str());
+    request->send(404, "text/plain", "Not found");
 }
 
-void handleGetStatus() {
+void handleGetStatus(AsyncWebServerRequest *request) {
+    Serial.println("Handling get status request.");
     StaticJsonDocument<512> doc;
-    doc["firmwareVersion"] = "1.0"; 
+    doc["firmwareVersion"] = "1.0";
 
     JsonObject dateTimeObj = doc.createNestedObject("dateTime");
     dateTimeObj["year"] = currentDateTime.year;
@@ -376,54 +353,12 @@ void handleGetStatus() {
 
     String output;
     serializeJson(doc, output);
-    server.send(200, "application/json", output);
+    request->send(200, "application/json", output);
 }
 
-void handleGetTime() {
-    StaticJsonDocument<256> doc;
-    doc["year"] = currentDateTime.year;
-    doc["month"] = currentDateTime.month;
-    doc["day"] = currentDateTime.day;
-    doc["hour"] = currentDateTime.hour;
-    doc["minute"] = currentDateTime.minute;
-    doc["second"] = currentDateTime.second;
-    String output;
-    serializeJson(doc, output);
-    server.send(200, "application/json", output);
-}
-
-void handleSetTime() {
-    if (server.hasArg("plain")) { // JSON body
-        StaticJsonDocument<256> doc;
-        DeserializationError error = deserializeJson(doc, server.arg("plain"));
-        if (error) {
-            server.send(400, "application/json", "{\"success\":false, \"message\":\"Invalid JSON\"}");
-            return;
-        }
-        currentDateTime.year = doc["year"] | currentDateTime.year;
-        currentDateTime.month = doc["month"] | currentDateTime.month;
-        currentDateTime.day = doc["day"] | currentDateTime.day;
-        currentDateTime.hour = doc["hour"] | currentDateTime.hour;
-        currentDateTime.minute = doc["minute"] | currentDateTime.minute;
-        currentDateTime.second = 0; 
-        server.send(200, "application/json", "{\"success\":true, \"message\":\"Time updated via JSON\"}");
-    } else if (server.hasArg("year") && server.hasArg("month") && 
-               server.hasArg("day") && server.hasArg("hour") && 
-               server.hasArg("minute")) { // Form data (less likely with current JS)
-        currentDateTime.year = server.arg("year").toInt();
-        currentDateTime.month = server.arg("month").toInt();
-        currentDateTime.day = server.arg("day").toInt();
-        currentDateTime.hour = server.arg("hour").toInt();
-        currentDateTime.minute = server.arg("minute").toInt();
-        currentDateTime.second = 0;
-        server.send(200, "application/json", "{\"success\":true, \"message\":\"Time updated\"}");
-    } else {
-        server.send(400, "application/json", "{\"success\":false, \"message\":\"Missing time parameters\"}");
-    }
-}
-
-void handleGetCycles() {
-    StaticJsonDocument<1024> doc; 
+void handleGetCycles(AsyncWebServerRequest *request) {
+    Serial.println("Handling get cycles request.");
+    StaticJsonDocument<1024> doc;
     JsonArray cyclesArray = doc.createNestedArray("cycles");
 
     for (int i = 0; i < NUM_CYCLES; i++) {
@@ -435,8 +370,8 @@ void handleGetCycles() {
         startTimeObj["hour"] = cycles[i]->startTime.hour;
         startTimeObj["minute"] = cycles[i]->startTime.minute;
         
-        cycleObj["daysActive"] = cycles[i]->daysActive; 
-        cycleObj["daysActiveString"] = dayOfWeekToString(cycles[i]->daysActive); 
+        cycleObj["daysActive"] = cycles[i]->daysActive;
+        cycleObj["daysActiveString"] = dayOfWeekToString(cycles[i]->daysActive);
         cycleObj["interZoneDelay"] = cycles[i]->interZoneDelay;
         
         JsonArray durations = cycleObj.createNestedArray("zoneDurations");
@@ -446,22 +381,23 @@ void handleGetCycles() {
     }
     String output;
     serializeJson(doc, output);
-    server.send(200, "application/json", output);
+    request->send(200, "application/json", output);
 }
 
-void handleSetCycle() {
-    if (server.method() == HTTP_POST && server.hasArg("plain")) { 
-        StaticJsonDocument<512> doc; 
-        DeserializationError error = deserializeJson(doc, server.arg("plain"));
+void handleSetCycle(AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
+    Serial.println("Handling set cycle request.");
+    if (index == 0) {
+        StaticJsonDocument<512> doc;
+        DeserializationError error = deserializeJson(doc, (const char*)data, len);
 
         if (error) {
-            server.send(400, "application/json", "{\"success\":false, \"message\":\"Invalid JSON\"}");
+            request->send(400, "application/json", "{\"success\":false, \"message\":\"Invalid JSON\"}");
             return;
         }
 
         int cycleIndex = doc["cycleIndex"];
         if (cycleIndex < 0 || cycleIndex >= NUM_CYCLES) {
-            server.send(400, "application/json", "{\"success\":false, \"message\":\"Invalid cycle index\"}");
+            request->send(400, "application/json", "{\"success\":false, \"message\":\"Invalid cycle index\"}");
             return;
         }
 
@@ -483,60 +419,65 @@ void handleSetCycle() {
                 cfg->zoneDurations[i] = zoneDurations[i].as<uint16_t>();
             }
         }
-        server.send(200, "application/json", "{\"success\":true, \"message\":\"Cycle updated\"}");
-    } else {
-        server.send(400, "application/json", "{\"success\":false, \"message\":\"Invalid request\"}");
+        request->send(200, "application/json", "{\"success\":true, \"message\":\"Cycle updated\"}");
     }
 }
 
-void handleManualControl() {
-    if (server.method() == HTTP_POST && server.hasArg("plain")) {
+void handleManualControl(AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
+    Serial.println("Handling manual control request.");
+    if (index == 0) {
         StaticJsonDocument<256> doc;
-        DeserializationError error = deserializeJson(doc, server.arg("plain"));
+        DeserializationError error = deserializeJson(doc, (const char*)data, len);
         if (error) {
-            server.send(400, "application/json", "{\"success\":false, \"message\":\"Invalid JSON\"}");
+            request->send(400, "application/json", "{\"success\":false, \"message\":\"Invalid JSON\"}");
             return;
         }
 
         const char* action = doc["action"];
         if (strcmp(action, "start_zone") == 0) {
-            int zone = doc["zone"]; 
-            int duration = doc["duration"]; 
-            if (zone >= 1 && zone <= ZONE_COUNT && duration > 0 && duration <= 120) { 
-                selectedManualDuration = duration; 
-                startManualZone(zone); 
-                server.send(200, "application/json", "{\"success\":true, \"message\":\"Manual zone start requested for " + String(duration) + " minutes\"}");
+            int zone = doc["zone"];
+            int duration = doc["duration"];
+            if (zone >= 1 && zone <= ZONE_COUNT && duration > 0 && duration <= 120) {
+                selectedManualDuration = duration;
+                startManualZone(zone);
+                request->send(200, "application/json", "{\"success\":true, \"message\":\"Manual zone start requested\"}");
             } else {
-                server.send(400, "application/json", "{\"success\":false, \"message\":\"Invalid zone or duration (1-120 min)\"}");
+                request->send(400, "application/json", "{\"success\":false, \"message\":\"Invalid zone or duration\"}");
             }
         } else if (strcmp(action, "start_cycle") == 0) {
             int cycleIdx = doc["cycle"];
             if (cycleIdx >= 0 && cycleIdx < NUM_CYCLES) {
                 startCycleRun(cycleIdx, OP_MANUAL_CYCLE);
-                server.send(200, "application/json", "{\"success\":true, \"message\":\"Cycle start requested\"}");
+                request->send(200, "application/json", "{\"success\":true, \"message\":\"Cycle start requested\"}");
             } else {
-                server.send(400, "application/json", "{\"success\":false, \"message\":\"Invalid cycle index\"}");
+                request->send(400, "application/json", "{\"success\":false, \"message\":\"Invalid cycle index\"}");
             }
         } else if (strcmp(action, "stop_all") == 0) {
             stopAllActivity();
-            server.send(200, "application/json", "{\"success\":true, \"message\":\"Stop all requested\"}");
+            request->send(200, "application/json", "{\"success\":true, \"message\":\"Stop all requested\"}");
         } else {
-            server.send(400, "application/json", "{\"success\":false, \"message\":\"Unknown action\"}");
+            request->send(400, "application/json", "{\"success\":false, \"message\":\"Unknown action\"}");
         }
-    } else {
-        server.send(400, "application/json", "{\"success\":false, \"message\":\"Invalid request\"}");
     }
 }
 
+void handleTest(AsyncWebServerRequest *request) {
+    Serial.println("Test button clicked!");
+    request->send(200, "text/plain", "Test button handled");
+}
+
 void initWebServer() {
+    Serial.println("Initializing web server...");
     server.on("/", HTTP_GET, handleRoot);
     server.on("/api/status", HTTP_GET, handleGetStatus);
-    server.on("/api/time", HTTP_GET, handleGetTime); 
-    server.on("/api/time", HTTP_POST, handleSetTime); 
-    server.on("/api/cycles", HTTP_GET, handleGetCycles); 
-    server.on("/api/cycle", HTTP_POST, handleSetCycle);  
-    server.on("/api/manual", HTTP_POST, handleManualControl); 
+    server.on("/api/test", HTTP_GET, handleTest);
+    server.on("/api/cycles", HTTP_GET, handleGetCycles);
+
+    // POST handlers with body
+    server.on("/api/cycle", HTTP_POST, [](AsyncWebServerRequest *request){}, NULL, handleSetCycle);
+    server.on("/api/manual", HTTP_POST, [](AsyncWebServerRequest *request){}, NULL, handleManualControl);
+
     server.onNotFound(handleNotFound);
     server.begin();
-    Serial.println("HTTP server started using WebServer library");
+    Serial.println("HTTP server started using ESPAsyncWebServer. Now confirming server is running...");
 }

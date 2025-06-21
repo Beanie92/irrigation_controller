@@ -1,4 +1,5 @@
 #include "st7789_dma_driver.h"
+#include <Arduino.h>
 
 // Store pin numbers and SPI bus
 static int8_t _dc_pin;
