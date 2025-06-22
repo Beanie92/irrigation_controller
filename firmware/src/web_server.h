@@ -31,6 +31,8 @@ void handleNotFound(AsyncWebServerRequest *request);
 
 // API Handlers
 void handleGetStatus(AsyncWebServerRequest *request);
+void handleGetTime(AsyncWebServerRequest *request);
+void handleSetTime(AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total);
 void handleGetCycles(AsyncWebServerRequest *request);
 void handleSetCycle(AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total);
 void handleManualControl(AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total);
