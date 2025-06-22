@@ -15,22 +15,57 @@ const char index_html[] PROGMEM = R"rawliteral(
   <link rel="icon" href="data:image/webp;base64,##FAVICON_BASE64##" type="image/webp">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
-    body { font-family: Arial, sans-serif; margin: 0; padding: 20px; background-color: #f4f4f4; color: #333; }
-    .container { background-color: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
+    body { 
+      font-family: Arial, sans-serif; 
+      margin: 0; 
+      background-color: #f4f4f4; 
+      color: #333; 
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+    .container { 
+      background-color: #fff; 
+      padding: 20px; 
+      border-radius: 8px; 
+      box-shadow: 0 0 10px rgba(0,0,0,0.1); 
+      max-width: 800px; 
+      width: 100%;
+      margin: 10px;
+    }
     .header-img { max-width: 100px; max-height: 100px; vertical-align: middle; margin-right: 10px; object-fit: contain; }
     h1, h2 { color: #0056b3; }
-    .section { margin-bottom: 20px; padding: 15px; border: 1px solid #ddd; border-radius: 4px; }
+    .section { margin-bottom: 20px; padding: 15px; padding-top: 0px; border: 1px solid #ddd; border-radius: 4px; }
     label { display: block; margin-bottom: 5px; font-weight: bold; }
+    .form-row label { display: inline-block; margin-right: 10px; margin-bottom: 0; flex-shrink: 0; }
     input[type="text"], input[type="number"], select {
-      width: calc(100% - 22px); padding: 10px; margin-bottom: 10px; border: 1px solid #ccc; border-radius: 4px;
+      width: 100%; 
+      padding: 10px; 
+      margin-bottom: 10px; 
+      border: 1px solid #ccc; 
+      border-radius: 4px;
+      box-sizing: border-box;
     }
+    .form-row input, .form-row select { width: auto; flex-grow: 1; margin-bottom: 0; }
     button {
       background-color: #007bff; color: white; padding: 10px 15px; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; margin-right: 5px;
     }
     button:hover { background-color: #0056b3; }
-    .status { padding: 10px; background-color: #e9ecef; border-radius: 4px; margin-bottom:15px; }
-    .zone-status { display: flex; flex-wrap: wrap; gap: 10px; }
-    .zone { padding: 8px; border: 1px solid #ccc; border-radius: 4px; width: 120px; text-align: center; }
+    .status { padding: 10px;  background-color: #e9ecef; border-radius: 4px; margin-bottom:15px; }
+    .zone-status { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
+    .form-row { display: flex; align-items: center; margin-bottom: 10px; }
+    .zone { 
+      padding: 8px; 
+      border: 1px solid #ccc; 
+      border-radius: 4px; 
+      width: 120px; 
+      text-align: center; 
+      display: flex; 
+      justify-content: center; 
+      align-items: center; 
+    }
     .zone.active { background-color: #28a745; color: white; }
     .cycle-config { margin-bottom: 15px; }
     summary {
@@ -48,11 +83,23 @@ const char index_html[] PROGMEM = R"rawliteral(
       border-top: none;
       border-radius: 0 0 4px 4px;
     }
-    .days button { padding: 5px 8px; margin: 2px; background-color: #6c757d; }
+    .days { display: flex; justify-content: center; }
+    .days button { padding: 5px 8px; margin: 2px; background-color: #6c757d; flex-grow: 1; text-align: center; min-width: 40px; }
     .days button.active { background-color: #28a745; }
-    #message { margin-top: 15px; padding: 10px; border-radius: 4px; }
-    .success { background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
-    .error { background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+    #message { 
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      padding: 10px; 
+      border-radius: 0;
+      margin-top: 0;
+      z-index: 1000;
+      text-align: center;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+    }
+    .success { background-color: #d4edda; color: #155724; border-bottom: 1px solid #c3e6cb; }
+    .error { background-color: #f8d7da; color: #721c24; border-bottom: 1px solid #f5c6cb; }
   </style>
 </head>
 <body>
@@ -71,12 +118,16 @@ const char index_html[] PROGMEM = R"rawliteral(
 
     <div class="section">
       <h2>Manual Control</h2>
-      <label for="manualZone">Select Zone:</label>
-      <select id="manualZone">
-        <!-- Options will be populated by JS -->
-      </select>
-      <label for="manualDuration">Duration (minutes):</label>
-      <input type="number" id="manualDuration" value="5" min="1" max="120">
+      <div class="form-row">
+        <label for="manualZone">Select Zone:</label>
+        <select id="manualZone">
+          <!-- Options will be populated by JS -->
+        </select>
+      </div>
+      <div class="form-row">
+        <label for="manualDuration">Duration (minutes):</label>
+        <input type="number" id="manualDuration" value="5" min="1" max="120">
+      </div>
       <button onclick="startManualZone()">Start Zone</button>
       <button onclick="stopAll()">Stop All</button>
     </div>
@@ -93,8 +144,8 @@ const char index_html[] PROGMEM = R"rawliteral(
       <button onclick="saveZoneNames()">Save Zone Names</button>
     </div>
 
-    <div id="message"></div>
   </div>
+  <div id="message"></div>
 
 <script>
   const dayNames = ["SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"];
@@ -105,6 +156,16 @@ const char index_html[] PROGMEM = R"rawliteral(
     msgDiv.textContent = text;
     msgDiv.className = type; // 'success' or 'error'
     setTimeout(() => { msgDiv.textContent = ''; msgDiv.className = ''; }, 5000);
+  }
+
+  function validateInput(element, min, max, name) {
+    const value = parseInt(element.value);
+    if (isNaN(value) || value < min || value > max) {
+      showMessage(`${name} must be between ${min} and ${max}.`, 'error');
+      element.focus();
+      return false;
+    }
+    return true;
   }
 
   function fetchStatus() {
@@ -165,23 +226,31 @@ const char index_html[] PROGMEM = R"rawliteral(
           let zonesHtml = '';
           cycle.zoneDurations.forEach((dur, zIdx) => {
             const zoneName = zoneNames.length > zIdx ? zoneNames[zIdx] : `Zone ${zIdx + 1}`;
-            zonesHtml += `<label for="cycle${index}_zone${zIdx}">${zoneName} (min):</label>
-                          <input type="number" id="cycle${index}_zone${zIdx}" value="${dur}" min="0" max="120"><br>`;
+            zonesHtml += `<div class="form-row"><label for="cycle${index}_zone${zIdx}">${zoneName} (min):</label>
+                          <input type="number" id="cycle${index}_zone${zIdx}" value="${dur}" min="0" max="120"></div>`;
           });
           
           cycleDiv.innerHTML = `
             <input type="hidden" id="cycle${index}_name" value="${cycle.name}">
-            <label for="cycle${index}_enabled">Enabled:</label>
-            <select id="cycle${index}_enabled">
-              <option value="true" ${cycle.enabled ? 'selected' : ''}>Yes</option>
-              <option value="false" ${!cycle.enabled ? 'selected' : ''}>No</option>
-            </select><br>
-            <label for="cycle${index}_starthour">Start Hour:</label>
-            <input type="number" id="cycle${index}_starthour" value="${cycle.startTime.hour}" min="0" max="23"><br>
-            <label for="cycle${index}_startminute">Start Minute:</label>
-            <input type="number" id="cycle${index}_startminute" value="${cycle.startTime.minute}" min="0" max="59"><br>
-            <label for="cycle${index}_delay">Inter-Zone Delay (min):</label>
-            <input type="number" id="cycle${index}_delay" value="${cycle.interZoneDelay}" min="0" max="60"><br>
+            <div class="form-row">
+              <label for="cycle${index}_enabled">Enabled:</label>
+              <select id="cycle${index}_enabled">
+                <option value="true" ${cycle.enabled ? 'selected' : ''}>Yes</option>
+                <option value="false" ${!cycle.enabled ? 'selected' : ''}>No</option>
+              </select>
+            </div>
+            <div class="form-row">
+              <label for="cycle${index}_starthour">Start Hour:</label>
+              <input type="number" id="cycle${index}_starthour" value="${cycle.startTime.hour}" min="0" max="23">
+            </div>
+            <div class="form-row">
+              <label for="cycle${index}_startminute">Start Minute:</label>
+              <input type="number" id="cycle${index}_startminute" value="${cycle.startTime.minute}" min="0" max="59">
+            </div>
+            <div class="form-row">
+              <label for="cycle${index}_delay">Inter-Zone Delay (min):</label>
+              <input type="number" id="cycle${index}_delay" value="${cycle.interZoneDelay}" min="0" max="60">
+            </div>
             <label>Days Active:</label><div class="days" id="cycle${index}_days" data-days="${cycle.daysActive}">${daysHtml}</div>
             <div class="zones">${zonesHtml}</div>
             <button onclick="saveCycle(${index})">Save ${cycle.name}</button>
@@ -206,19 +275,30 @@ const char index_html[] PROGMEM = R"rawliteral(
   }
 
   function saveCycle(index) {
+    const hourEl = document.getElementById(`cycle${index}_starthour`);
+    const minuteEl = document.getElementById(`cycle${index}_startminute`);
+    const delayEl = document.getElementById(`cycle${index}_delay`);
+
+    if (!validateInput(hourEl, 0, 23, "Start Hour")) return;
+    if (!validateInput(minuteEl, 0, 59, "Start Minute")) return;
+    if (!validateInput(delayEl, 0, 60, "Inter-Zone Delay")) return;
+
     const zoneDurations = [];
-    for(let i=0; i<${ZONE_COUNT}; i++) { // ZONE_COUNT will be replaced by its value in the HTML
-        zoneDurations.push(parseInt(document.getElementById(`cycle${index}_zone${i}`).value));
+    for(let i=0; i<${ZONE_COUNT}; i++) {
+        const zoneEl = document.getElementById(`cycle${index}_zone${i}`);
+        if (!validateInput(zoneEl, 0, 120, `Zone ${i+1} Duration`)) return;
+        zoneDurations.push(parseInt(zoneEl.value));
     }
+
     const data = {
       cycleIndex: index,
       name: document.getElementById(`cycle${index}_name`).value,
       enabled: document.getElementById(`cycle${index}_enabled`).value === 'true',
       startTime: {
-        hour: parseInt(document.getElementById(`cycle${index}_starthour`).value),
-        minute: parseInt(document.getElementById(`cycle${index}_startminute`).value)
+        hour: parseInt(hourEl.value),
+        minute: parseInt(minuteEl.value)
       },
-      interZoneDelay: parseInt(document.getElementById(`cycle${index}_delay`).value),
+      interZoneDelay: parseInt(delayEl.value),
       daysActive: parseInt(document.getElementById(`cycle${index}_days`).getAttribute('data-days')),
       zoneDurations: zoneDurations
     };
@@ -245,11 +325,15 @@ const char index_html[] PROGMEM = R"rawliteral(
 
   function startManualZone() {
     const zoneId = parseInt(document.getElementById('manualZone').value);
-    const duration = parseInt(document.getElementById('manualDuration').value);
+    const durationEl = document.getElementById('manualDuration');
+    
     if (zoneId < 1) {
         showMessage('Please select a zone.', 'error');
         return;
     }
+    if (!validateInput(durationEl, 1, 120, "Duration")) return;
+
+    const duration = parseInt(durationEl.value);
     fetch('/api/manual', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
@@ -310,17 +394,22 @@ const char index_html[] PROGMEM = R"rawliteral(
         const container = document.getElementById('zoneNamesConfig');
         container.innerHTML = '';
         data.zoneNames.forEach((name, index) => {
+          const itemDiv = document.createElement('div');
+          itemDiv.className = 'form-row';
+
           const label = document.createElement('label');
           label.setAttribute('for', `zoneName_${index}`);
           label.textContent = `Zone ${index + 1}:`;
-          container.appendChild(label);
+          itemDiv.appendChild(label);
 
           const input = document.createElement('input');
           input.type = 'text';
           input.id = `zoneName_${index}`;
           input.value = name;
           input.maxLength = 31;
-          container.appendChild(input);
+          itemDiv.appendChild(input);
+          
+          container.appendChild(itemDiv);
         });
       })
       .catch(err => {
@@ -332,7 +421,14 @@ const char index_html[] PROGMEM = R"rawliteral(
   function saveZoneNames() {
     const names = [];
     for (let i = 0; i < ${ZONE_COUNT}; i++) {
-      names.push(document.getElementById(`zoneName_${i}`).value);
+      const nameEl = document.getElementById(`zoneName_${i}`);
+      const name = nameEl.value.trim();
+      if (name.length === 0 || name.length > 31) {
+        showMessage(`Zone ${i+1} name must be between 1 and 31 characters.`, 'error');
+        nameEl.focus();
+        return;
+      }
+      names.push(name);
     }
     
     fetch('/api/zonenames', {
