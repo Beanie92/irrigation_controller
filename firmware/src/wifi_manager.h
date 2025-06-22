@@ -2,6 +2,7 @@
 #define WIFI_MANAGER_H
 
 #include <Arduino.h>
+#include "color_config.h"
 #include "ui_components.h" // For SystemDateTime
 
 // Initialization and main loop handler

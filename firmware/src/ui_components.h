@@ -74,15 +74,10 @@ struct ScrollableList {
     // Display Properties
     int x, y, width, height;      // Bounding box for the entire component on screen
     int item_text_size;           // Font size for list items
-    uint16_t item_text_color;
-    uint16_t selected_item_text_color;
-    uint16_t selected_item_bg_color; // Background color for the selected item
-    uint16_t list_bg_color;          // Background color for the list area
 
     // Optional Title
     const char* title;
     int title_text_size;
-    uint16_t title_text_color;
     int title_area_height;        // Calculated or fixed height for the title area
     bool show_back_button;
 
@@ -101,6 +96,9 @@ void handleScrollableListInput(ScrollableList& list, long encoder_diff);
 
 // Date/Time Display Component
 void drawDateTimeComponent(GFXcanvas16& canvas, int x, int y, const SystemDateTime& dt, DayOfWeek dow);
+
+// General UI Helpers
+void setRelativeCursor(GFXcanvas16& canvas, int16_t dx, int16_t dy);
 
 
 #endif // UI_COMPONENTS_H

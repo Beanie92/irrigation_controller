@@ -1,6 +1,6 @@
 #include "ui_components.h"
 #include <Adafruit_GFX.h> // For GFXcanvas16
-#include "st7789_dma_driver.h" // For color definitions
+#include "color_config.h" // For UI color theme
 #include <Arduino.h>     // For sprintf, etc.
 
 
@@ -31,18 +31,18 @@ void setupScrollableListMetrics(ScrollableList& list, GFXcanvas16& canvas) {
 // Helper function to draw a scrollable list
 void drawScrollableList(GFXcanvas16& canvas, ScrollableList& list, bool is_active) {
     // Clear the component's background area
-    canvas.fillRect(list.x, list.y, list.width, list.height, list.list_bg_color);
+    canvas.fillRect(list.x, list.y, list.width, list.height, COLOR_LIST_BACKGROUND);
 
     // Draw the title if provided
     if (list.title != nullptr) {
         canvas.setTextSize(list.title_text_size);
-        canvas.setTextColor(list.title_text_color);
+        canvas.setTextColor(COLOR_LIST_TITLE_TEXT);
         canvas.setCursor(list.x + 10, list.y + 10); // Small padding from top-left
         canvas.println(list.title);
+    if (*list.selected_index_ptr < list.top_visible_index) {
     }
 
     // Adjust top_visible_index to keep selected item in view
-    if (*list.selected_index_ptr < list.top_visible_index) {
         list.top_visible_index = *list.selected_index_ptr;
     } else if (*list.selected_index_ptr >= list.top_visible_index + list.max_items_in_view) {
         list.top_visible_index = *list.selected_index_ptr - list.max_items_in_view + 1;
@@ -69,10 +69,10 @@ void drawScrollableList(GFXcanvas16& canvas, ScrollableList& list, bool is_activ
         
         // Highlight selected item only if the list is active
         if (is_active && current_item_index == *list.selected_index_ptr) {
-            canvas.fillRect(list.x, yPos, list.width, list.item_render_height, list.selected_item_bg_color);
-            canvas.setTextColor(list.selected_item_text_color);
+            canvas.fillRect(list.x, yPos, list.width, list.item_render_height, COLOR_LIST_ITEM_SELECTED_BG);
+            canvas.setTextColor(COLOR_LIST_ITEM_SELECTED_TEXT);
         } else {
-            canvas.setTextColor(list.item_text_color);
+            canvas.setTextColor(COLOR_LIST_ITEM_TEXT);
         }
         canvas.setCursor(list.x + 20, yPos + 5); // Small padding from top of item row
         
@@ -98,7 +98,7 @@ void drawScrollableList(GFXcanvas16& canvas, ScrollableList& list, bool is_activ
     // Draw scroll indicators if not all items are visible
     if (total_items > list.max_items_in_view) {
         canvas.setTextSize(1); // Smaller text for indicators
-        canvas.setTextColor(COLOR_RGB565_CYAN);
+        canvas.setTextColor(COLOR_LIST_SCROLL_INDICATOR);
         if (list.top_visible_index > 0) {
             canvas.setCursor(list.x + list.width - 20, list.list_items_area_y + 5); // Top right
             canvas.println("^");
@@ -132,7 +132,7 @@ void handleScrollableListInput(ScrollableList& list, long encoder_diff) {
 // -----------------------------------------------------------------------------
 void drawDateTimeComponent(GFXcanvas16& canvas, int x, int y, const SystemDateTime& dt, DayOfWeek dow) {
     canvas.setCursor(x, y);
-    canvas.setTextColor(COLOR_RGB565_GREEN);
+    canvas.setTextColor(COLOR_DATETIME_TEXT);
     canvas.setTextSize(2);
 
     // Get day of the week string
@@ -159,4 +159,14 @@ void drawDateTimeComponent(GFXcanvas16& canvas, int x, int y, const SystemDateTi
         dow_str
     );
     canvas.println(buf);
+}
+
+// -----------------------------------------------------------------------------
+//                         General UI Helper Functions
+// -----------------------------------------------------------------------------
+
+void setRelativeCursor(GFXcanvas16& canvas, int16_t dx, int16_t dy) {
+    int16_t currentX = canvas.getCursorX();
+    int16_t currentY = canvas.getCursorY();
+    canvas.setCursor(currentX + dx, currentY + dy);
 }

@@ -5,6 +5,7 @@
 #include <Preferences.h>
 #include "web_server.h"
 #include "ui_components.h"
+#include "color_config.h"
 #include "st7789_dma_driver.h"
 
 #define DEBUG_ENABLED true
@@ -204,31 +205,31 @@ static void sync_time_with_ntp() {
 }
 
 static void display_wifi_info() {
-    canvas.fillScreen(COLOR_RGB565_BLACK);
+    canvas.fillScreen(COLOR_BACKGROUND);
     canvas.setTextSize(2);
-    canvas.setTextColor(COLOR_RGB565_YELLOW);
+    canvas.setTextColor(COLOR_WARNING);
     canvas.setCursor(10, 10);
     canvas.println("WiFi Status");
     canvas.setTextSize(1);
-    canvas.setTextColor(COLOR_RGB565_WHITE);
+    canvas.setTextColor(COLOR_TEXT_PRIMARY);
     canvas.setCursor(10, 50);
     canvas.println("Connecting to WiFi...");
     canvas.setCursor(10, 70);
     canvas.printf("SSID: %s", wm.getWiFiSSID().c_str());
     canvas.setCursor(10, 100);
-    canvas.setTextColor(COLOR_RGB565_CYAN);
+    canvas.setTextColor(COLOR_ACCENT_PRIMARY);
     canvas.println("Press encoder to cancel");
     st7789_push_canvas(canvas.getBuffer(), 320, 240);
 }
 
 static void display_portal_info() {
-    canvas.fillScreen(COLOR_RGB565_BLACK);
+    canvas.fillScreen(COLOR_BACKGROUND);
     canvas.setTextSize(2);
-    canvas.setTextColor(COLOR_RGB565_YELLOW);
+    canvas.setTextColor(COLOR_WARNING);
     canvas.setCursor(10, 10);
     canvas.println("WiFi Setup Portal");
     canvas.setTextSize(1);
-    canvas.setTextColor(COLOR_RGB565_WHITE);
+    canvas.setTextColor(COLOR_TEXT_PRIMARY);
     canvas.setCursor(10, 50);
     canvas.println("1. Connect to WiFi AP:");
     canvas.setCursor(20, 65);
@@ -238,19 +239,19 @@ static void display_portal_info() {
     canvas.setCursor(10, 105);
     canvas.println("3. Open browser to 192.168.4.1");
     canvas.setCursor(10, 140);
-    canvas.setTextColor(COLOR_RGB565_CYAN);
+    canvas.setTextColor(COLOR_ACCENT_PRIMARY);
     canvas.println("Press encoder to cancel");
     st7789_push_canvas(canvas.getBuffer(), 320, 240);
 }
 
 static void display_connection_success() {
-    canvas.fillScreen(COLOR_RGB565_BLACK);
+    canvas.fillScreen(COLOR_BACKGROUND);
     canvas.setTextSize(2);
-    canvas.setTextColor(COLOR_RGB565_GREEN);
+    canvas.setTextColor(COLOR_SUCCESS);
     canvas.setCursor(10, 10);
     canvas.println("WiFi Connected!");
     canvas.setTextSize(1);
-    canvas.setTextColor(COLOR_RGB565_WHITE);
+    canvas.setTextColor(COLOR_TEXT_PRIMARY);
     canvas.setCursor(10, 50);
     canvas.printf("SSID: %s", WiFi.SSID().c_str());
     canvas.setCursor(10, 70);
@@ -260,13 +261,13 @@ static void display_connection_success() {
 }
 
 static void display_connection_failure(const char* reason) {
-    canvas.fillScreen(COLOR_RGB565_BLACK);
+    canvas.fillScreen(COLOR_BACKGROUND);
     canvas.setTextSize(2);
-    canvas.setTextColor(COLOR_RGB565_RED);
+    canvas.setTextColor(COLOR_ERROR);
     canvas.setCursor(10, 10);
     canvas.println("WiFi Failed");
     canvas.setTextSize(1);
-    canvas.setTextColor(COLOR_RGB565_WHITE);
+    canvas.setTextColor(COLOR_TEXT_PRIMARY);
     canvas.setCursor(10, 50);
     canvas.printf("Reason: %s", reason);
     st7789_push_canvas(canvas.getBuffer(), 320, 240);
