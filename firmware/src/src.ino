@@ -6,6 +6,7 @@
 #include "web_server.h" // Include the web server header
 #include "wifi_manager.h" // Include the new WiFi manager
 #include "config_manager.h" // Include the configuration manager
+#include "logo.h"
 #include <LittleFS.h>
 
 // -----------------------------------------------------------------------------
@@ -325,12 +326,11 @@ void setup() {
   // Backlight is handled by st7789_init_display and st7789_set_backlight
   lastActivityTime = millis();
 
-  // Show a simple booting message instead of the logo
+  // Show logo on boot
   canvas.fillScreen(COLOR_BACKGROUND);
-  canvas.setTextSize(2);
-  canvas.setTextColor(COLOR_TEXT_PRIMARY);
-  canvas.setCursor(LEFT_PADDING, 10);
-  canvas.println("Booting...");
+  int16_t logo_x = (320 - LOGO_WIDTH) / 2;
+  int16_t logo_y = (240 - LOGO_HEIGHT) / 2;
+  canvas.drawRGBBitmap(logo_x, logo_y, logo_data, LOGO_WIDTH, LOGO_HEIGHT);
   updateScreen();
   delay(3000);
 

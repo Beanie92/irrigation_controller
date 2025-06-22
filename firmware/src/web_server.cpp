@@ -1,5 +1,6 @@
 #include "web_server.h"
 #include "config_manager.h"
+#include "logo_webp.h"
 #include <ESPAsyncWebServer.h>
 #include <ArduinoJson.h>
 
@@ -11,10 +12,12 @@ const char index_html[] PROGMEM = R"rawliteral(
 <!DOCTYPE HTML><html>
 <head>
   <title>Irrigation Controller</title>
+  <link rel="icon" href="data:image/webp;base64,##FAVICON_BASE64##" type="image/webp">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
     body { font-family: Arial, sans-serif; margin: 0; padding: 20px; background-color: #f4f4f4; color: #333; }
     .container { background-color: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
+    .header-img { max-width: 100px; max-height: 100px; vertical-align: middle; margin-right: 10px; object-fit: contain; }
     h1, h2 { color: #0056b3; }
     .section { margin-bottom: 20px; padding: 15px; border: 1px solid #ddd; border-radius: 4px; }
     label { display: block; margin-bottom: 5px; font-weight: bold; }
@@ -30,6 +33,21 @@ const char index_html[] PROGMEM = R"rawliteral(
     .zone { padding: 8px; border: 1px solid #ccc; border-radius: 4px; width: 120px; text-align: center; }
     .zone.active { background-color: #28a745; color: white; }
     .cycle-config { margin-bottom: 15px; }
+    summary {
+      cursor: pointer;
+      padding: 10px;
+      background-color: #f2f2f2;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      margin-bottom: 5px;
+      font-weight: bold;
+    }
+    details > div {
+      padding: 10px;
+      border: 1px solid #ddd;
+      border-top: none;
+      border-radius: 0 0 4px 4px;
+    }
     .days button { padding: 5px 8px; margin: 2px; background-color: #6c757d; }
     .days button.active { background-color: #28a745; }
     #message { margin-top: 15px; padding: 10px; border-radius: 4px; }
@@ -39,7 +57,7 @@ const char index_html[] PROGMEM = R"rawliteral(
 </head>
 <body>
   <div class="container">
-    <h1>Irrigation Controller</h1>
+    <h1><img src="data:image/webp;base64,##FAVICON_BASE64##" class="header-img">Irrigation Controller</h1>
 
     <div class="section">
       <h2>System Status</h2>
@@ -130,8 +148,14 @@ const char index_html[] PROGMEM = R"rawliteral(
         const cyclesDiv = document.getElementById('cyclesConfig');
         cyclesDiv.innerHTML = '';
         data.cycles.forEach((cycle, index) => {
+          const details = document.createElement('details');
+          details.className = 'cycle-config';
+          
+          const summary = document.createElement('summary');
+          summary.textContent = cycle.name;
+          details.appendChild(summary);
+
           const cycleDiv = document.createElement('div');
-          cycleDiv.className = 'cycle-config section';
           let daysHtml = '';
           dayNames.forEach((day, dayIdx) => {
             const isActive = (cycle.daysActive & (1 << dayIdx)) ? 'active' : '';
@@ -146,7 +170,6 @@ const char index_html[] PROGMEM = R"rawliteral(
           });
           
           cycleDiv.innerHTML = `
-            <h3>${cycle.name}</h3>
             <input type="hidden" id="cycle${index}_name" value="${cycle.name}">
             <label for="cycle${index}_enabled">Enabled:</label>
             <select id="cycle${index}_enabled">
@@ -164,7 +187,8 @@ const char index_html[] PROGMEM = R"rawliteral(
             <button onclick="saveCycle(${index})">Save ${cycle.name}</button>
             <button onclick="runCycle(${index})">Run ${cycle.name} Now</button>
           `;
-          cyclesDiv.appendChild(cycleDiv);
+          details.appendChild(cycleDiv);
+          cyclesDiv.appendChild(details);
         });
       })
       .catch(err => {
@@ -380,6 +404,9 @@ void handleRoot(AsyncWebServerRequest *request) {
     Serial.println("Handling root request.");
     String html(index_html);
     html.replace("${ZONE_COUNT}", String(ZONE_COUNT));
+    String favicon_b64 = FAVICON_BASE64;
+    favicon_b64.replace("data:image/webp;base64,", "");
+    html.replace("##FAVICON_BASE64##", favicon_b64);
     request->send(200, "text/html", html);
 }
 
@@ -530,10 +557,6 @@ void handleManualControl(AsyncWebServerRequest *request, uint8_t *data, size_t l
     }
 }
 
-void handleTest(AsyncWebServerRequest *request) {
-    Serial.println("Test button clicked!");
-    request->send(200, "text/plain", "Test button handled");
-}
 
 void handleGetZoneNames(AsyncWebServerRequest *request) {
     Serial.println("Handling get zone names request.");
@@ -577,7 +600,6 @@ void initWebServer() {
     Serial.println("Initializing web server...");
     server.on("/", HTTP_GET, handleRoot);
     server.on("/api/status", HTTP_GET, handleGetStatus);
-    server.on("/api/test", HTTP_GET, handleTest);
     server.on("/api/cycles", HTTP_GET, handleGetCycles);
     server.on("/api/zonenames", HTTP_GET, handleGetZoneNames);
 
