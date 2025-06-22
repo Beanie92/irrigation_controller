@@ -1,6 +1,6 @@
 #include "ui_components.h"
 #include "CustomCanvas.h" // For CustomCanvas
-#include "color_config.h" // For UI color theme
+#include "styling.h" // For UI color theme
 #include <Arduino.h>     // For sprintf, etc.
 
 

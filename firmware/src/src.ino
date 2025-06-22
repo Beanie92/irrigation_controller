@@ -165,8 +165,11 @@ int selectedManualZoneIndex = 0;
 int selectedManualDuration = 5;  // Default 5 minutes 
 bool selectingDuration = false;  // Whether we're selecting duration or zone
 ScrollableList manualRunScrollList;
+const char* zoneNamePointers[ZONE_COUNT]; // Array of pointers for scrollable list
 
 // Cycle Config zone selection
+char cycleZoneDisplayStrings[ZONE_COUNT][50];
+const char* cycleZoneDisplayPointers[ZONE_COUNT];
 int selectedCycleZoneIndex = 0; // Used by all program config screens
 bool editingCycleZone = false; // Are we editing a zone duration?
 
@@ -351,6 +354,12 @@ void setup() {
   // Initialize WiFi Manager. It will start connecting if credentials are saved.
   wifi_manager_init();
 
+  // Initialize LittleFS
+  if (!LittleFS.begin(true)) {
+    Serial.println("Failed to mount file system");
+    // Handle error appropriately, maybe by rebooting or halting
+  }
+
   // Load configuration from LittleFS
   if (!loadConfig()) {
     // If config fails to load, save the defaults
@@ -388,9 +397,9 @@ void render() {
     case STATE_MANUAL_RUN:      drawManualRunMenu(); break;
     case STATE_SETTINGS:        drawSettingsMenu(); break;
     case STATE_SET_SYSTEM_TIME: drawSetSystemTimeMenu(); break;
-    case STATE_PROG_A:          drawCycleConfigMenu("Cycle A", cycleA); break;
-    case STATE_PROG_B:          drawCycleConfigMenu("Cycle B", cycleB); break;
-    case STATE_PROG_C:          drawCycleConfigMenu("Cycle C", cycleC); break;
+    case STATE_PROG_A:          drawCycleConfigMenu("Cycle A", systemConfig.cycles[0]); break;
+    case STATE_PROG_B:          drawCycleConfigMenu("Cycle B", systemConfig.cycles[1]); break;
+    case STATE_PROG_C:          drawCycleConfigMenu("Cycle C", systemConfig.cycles[2]); break;
     case STATE_RUNNING_ZONE:    drawRunningZoneMenu(); break;
     case STATE_CYCLE_RUNNING:   drawCycleRunningMenu(); break;
     case STATE_TEST_MODE:       drawTestModeMenu(); break;
@@ -561,15 +570,15 @@ void handleEncoderMovement() {
       break;
 
     case STATE_PROG_A:
-      handleCycleEditEncoder(diff, cycleA, "Cycle A");
+      handleCycleEditEncoder(diff, systemConfig.cycles[0], "Cycle A");
       break;
 
     case STATE_PROG_B:
-      handleCycleEditEncoder(diff, cycleB, "Cycle B");
+      handleCycleEditEncoder(diff, systemConfig.cycles[1], "Cycle B");
       break;
 
     case STATE_PROG_C:
-      handleCycleEditEncoder(diff, cycleC, "Cycle C");
+      handleCycleEditEncoder(diff, systemConfig.cycles[2], "Cycle C");
       break;
 
     case STATE_RUNNING_ZONE:
@@ -699,17 +708,17 @@ void handleButtonPress() {
 
         case STATE_PROG_A:
           DEBUG_PRINTF("Cycle A button - field %d\n", cycleEditFieldIndex);
-          handleCycleEditButton(cycleA, STATE_PROG_A, "Cycle A");
+          handleCycleEditButton(systemConfig.cycles[0], STATE_PROG_A, "Cycle A");
           break;
 
         case STATE_PROG_B:
           DEBUG_PRINTF("Cycle B button - field %d\n", cycleEditFieldIndex);
-          handleCycleEditButton(cycleB, STATE_PROG_B, "Cycle B");
+          handleCycleEditButton(systemConfig.cycles[1], STATE_PROG_B, "Cycle B");
           break;
 
         case STATE_PROG_C:
           DEBUG_PRINTF("Cycle C button - field %d\n", cycleEditFieldIndex);
-          handleCycleEditButton(cycleC, STATE_PROG_C, "Cycle C");
+          handleCycleEditButton(systemConfig.cycles[2], STATE_PROG_C, "Cycle C");
           break;
 
         case STATE_RUNNING_ZONE:
@@ -797,7 +806,13 @@ void navigateTo(UIState newState, bool isNavigatingBack) {
     case STATE_MANUAL_RUN:
       selectedManualZoneIndex = 0;
       selectingDuration = false;
-      manualRunScrollList.items = (const char**)&systemConfig.zoneNames[0];
+      
+      // Populate the pointers array for the scrollable list
+      for (int i = 0; i < ZONE_COUNT; i++) {
+        zoneNamePointers[i] = systemConfig.zoneNames[i];
+      }
+      manualRunScrollList.items = zoneNamePointers;
+      
       manualRunScrollList.num_items = ZONE_COUNT;
       manualRunScrollList.selected_index_ptr = &selectedManualZoneIndex;
       manualRunScrollList.x = 0;
@@ -913,14 +928,20 @@ void navigateTo(UIState newState, bool isNavigatingBack) {
 
         CycleConfig* currentProg;
         const char* progLabel;
-        if (newState == STATE_PROG_A) { currentProg = &cycleA; progLabel = "Cycle A"; }
-        else if (newState == STATE_PROG_B) { currentProg = &cycleB; progLabel = "Cycle B"; }
-        else { currentProg = &cycleC; progLabel = "Cycle C"; }
+        if (newState == STATE_PROG_A) { currentProg = &systemConfig.cycles[0]; progLabel = "Cycle A"; }
+        else if (newState == STATE_PROG_B) { currentProg = &systemConfig.cycles[1]; progLabel = "Cycle B"; }
+        else { currentProg = &systemConfig.cycles[2]; progLabel = "Cycle C"; }
 
-        cycleZonesScrollList.data_source = currentProg->zoneDurations;
+        // Populate pointers for the list
+        for (int i = 0; i < ZONE_COUNT; i++) {
+            cycleZoneDisplayPointers[i] = cycleZoneDisplayStrings[i];
+        }
+        cycleZonesScrollList.items = cycleZoneDisplayPointers;
+        cycleZonesScrollList.data_source = nullptr; // Not using data_source anymore
+        cycleZonesScrollList.format_string = nullptr; // Not using format_string anymore
+
         cycleZonesScrollList.num_items = ZONE_COUNT;
         cycleZonesScrollList.selected_index_ptr = &selectedCycleZoneIndex;
-        cycleZonesScrollList.format_string = "Zone %d: %d min";
         cycleZonesScrollList.x = 0;
         cycleZonesScrollList.y = 150;
         cycleZonesScrollList.width = 320;
@@ -1289,6 +1310,11 @@ void handleSetSystemTimeButton() {
 // -----------------------------------------------------------------------------
 void drawCycleConfigMenu(const char* label, CycleConfig& cfg) {
   canvas.fillScreen(COLOR_BACKGROUND);
+
+  // Update the display strings for the zone list before drawing
+  for (int i = 0; i < ZONE_COUNT; i++) {
+    sprintf(cycleZoneDisplayStrings[i], "%s: %d min", systemConfig.zoneNames[i], cfg.zoneDurations[i]);
+  }
 
   canvas.setTextSize(2);
   canvas.setTextColor(COLOR_ACCENT_SECONDARY);

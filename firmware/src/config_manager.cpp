@@ -46,12 +46,6 @@ void initializeDefaultConfig() {
 }
 
 bool loadConfig() {
-    if (!LittleFS.begin()) {
-        Serial.println("Failed to mount file system");
-        initializeDefaultConfig();
-        return false;
-    }
-
     File file = LittleFS.open(configFile, "r");
     if (!file) {
         Serial.println("Failed to open config file for reading, using defaults.");

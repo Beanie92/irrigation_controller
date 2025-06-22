@@ -76,14 +76,11 @@ const char index_html[] PROGMEM = R"rawliteral(
     </div>
 
     <div id="message"></div>
-    <div class="section">
-      <h2>Test</h2>
-      <button onclick="testClick()">Test Button</button>
-    </div>
   </div>
 
 <script>
   const dayNames = ["SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"];
+  let zoneNames = [];
 
   function showMessage(text, type) {
     const msgDiv = document.getElementById('message');
@@ -143,7 +140,8 @@ const char index_html[] PROGMEM = R"rawliteral(
 
           let zonesHtml = '';
           cycle.zoneDurations.forEach((dur, zIdx) => {
-            zonesHtml += `<label for="cycle${index}_zone${zIdx}">Zone ${zIdx+1} (min):</label>
+            const zoneName = zoneNames.length > zIdx ? zoneNames[zIdx] : `Zone ${zIdx + 1}`;
+            zonesHtml += `<label for="cycle${index}_zone${zIdx}">${zoneName} (min):</label>
                           <input type="number" id="cycle${index}_zone${zIdx}" value="${dur}" min="0" max="120"><br>`;
           });
           
@@ -281,9 +279,10 @@ const char index_html[] PROGMEM = R"rawliteral(
   }
 
   function fetchZoneNames() {
-    fetch('/api/zonenames')
+    return fetch('/api/zonenames') // Return the fetch promise
       .then(response => response.json())
       .then(data => {
+        zoneNames = data.zoneNames; // Store names in global variable
         const container = document.getElementById('zoneNamesConfig');
         container.innerHTML = '';
         data.zoneNames.forEach((name, index) => {
@@ -335,8 +334,9 @@ const char index_html[] PROGMEM = R"rawliteral(
   // Initial data fetch
   window.onload = () => {
     fetchStatus();
-    fetchCycles();
-    fetchZoneNames();
+    fetchZoneNames().then(() => {
+      fetchCycles(); // Fetch cycles only after zone names are loaded
+    });
   };
 
   function testClick() {
