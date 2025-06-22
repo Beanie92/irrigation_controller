@@ -5,8 +5,9 @@
 #include <Preferences.h>
 #include "web_server.h"
 #include "ui_components.h"
-#include "color_config.h"
+#include "styling.h"
 #include "st7789_dma_driver.h"
+#include "CustomCanvas.h"
 
 #define DEBUG_ENABLED true
 
@@ -20,7 +21,7 @@
   #define DEBUG_PRINTF(format, ...)
 #endif
 
-extern GFXcanvas16 canvas;
+extern CustomCanvas canvas;
 extern volatile bool encoder_button_pressed;
 
 static WiFiManager wm;

@@ -1,7 +1,7 @@
 #ifndef UI_COMPONENTS_H
 #define UI_COMPONENTS_H
 
-#include <Adafruit_GFX.h> // For GFXcanvas16 and color definitions
+#include "CustomCanvas.h" // For CustomCanvas, which includes Adafruit_GFX.h
 
 // -----------------------------------------------------------------------------
 //                           Data Structures
@@ -90,15 +90,15 @@ struct ScrollableList {
 };
 
 // Helper functions for the scrollable list
-void setupScrollableListMetrics(ScrollableList& list, GFXcanvas16& canvas);
-void drawScrollableList(GFXcanvas16& canvas, ScrollableList& list, bool is_active);
+void setupScrollableListMetrics(ScrollableList& list, CustomCanvas& canvas);
+void drawScrollableList(CustomCanvas& canvas, ScrollableList& list, bool is_active);
 void handleScrollableListInput(ScrollableList& list, long encoder_diff);
 
 // Date/Time Display Component
-void drawDateTimeComponent(GFXcanvas16& canvas, int x, int y, const SystemDateTime& dt, DayOfWeek dow);
+void drawDateTimeComponent(CustomCanvas& canvas, int x, int y, const SystemDateTime& dt, DayOfWeek dow);
 
 // General UI Helpers
-void setRelativeCursor(GFXcanvas16& canvas, int16_t dx, int16_t dy);
+void setRelativeCursor(CustomCanvas& canvas, int16_t dx, int16_t dy);
 
 
 #endif // UI_COMPONENTS_H

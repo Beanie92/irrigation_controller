@@ -15,7 +15,6 @@ extern DayOfWeek getCurrentDayOfWeek(); // To display current day on web UI
 
 // Extern declarations for global variables from src.ino
 extern SystemDateTime currentDateTime;
-extern CycleConfig cycleA, cycleB, cycleC;
 extern CycleConfig* cycles[]; // Array of pointers to the cycle configs
 extern const int NUM_CYCLES;
 extern int selectedManualDuration; // For setting duration from web UI before calling startManualZone
@@ -36,6 +35,8 @@ void handleSetTime(AsyncWebServerRequest *request, uint8_t *data, size_t len, si
 void handleGetCycles(AsyncWebServerRequest *request);
 void handleSetCycle(AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total);
 void handleManualControl(AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total);
+void handleGetZoneNames(AsyncWebServerRequest *request);
+void handleSetZoneNames(AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total);
 
 // Helper to convert DayOfWeek bitmask to string
 String dayOfWeekToString(uint8_t daysActive);

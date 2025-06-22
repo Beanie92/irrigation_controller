@@ -1,9 +1,12 @@
 #include <Arduino.h>
 #include "st7789_dma_driver.h" // Replaced DFRobot_GDL.h
-#include "color_config.h"
+#include "styling.h"
+#include "CustomCanvas.h"
 #include "ui_components.h"
 #include "web_server.h" // Include the web server header
 #include "wifi_manager.h" // Include the new WiFi manager
+#include "config_manager.h" // Include the configuration manager
+#include <LittleFS.h>
 
 // -----------------------------------------------------------------------------
 //                           DEBUG CONFIGURATION
@@ -55,18 +58,11 @@ static const int PUMP_IDX = 0;   // borehole pump
 #define TFT_RST  3
 #define TFT_BL   5 // Backlight control pin for dimming
 
-GFXcanvas16 canvas(320, 240);
+CustomCanvas canvas(320, 240);
 
 // Relay labels (index 0 is the pump)
 const char* relayLabels[NUM_RELAYS] = {
   "Pump (auto)", // index 0; not displayed in manual-run menu
-  "Zone 1",
-  "Zone 2",
-  "Zone 3",
-  "Zone 4",
-  "Zone 5",
-  "Zone 6",
-  "Zone 7"
 };
 
 // -----------------------------------------------------------------------------
@@ -232,32 +228,7 @@ void incrementOneSecond() {
 // -----------------------------------------------------------------------------
 // TimeOfDay and CycleConfig structs are now defined in ui_components.h
 
-CycleConfig cycleA = {
-    .enabled = true,
-    .startTime = {6, 0},  // 6:00 AM
-    .daysActive = MONDAY | WEDNESDAY | FRIDAY,
-    .interZoneDelay = 1,
-    .zoneDurations = {5, 5, 5, 5, 5, 5, 5},
-    .name = "Cycle A"
-};
-CycleConfig cycleB = {
-    .enabled = false,
-    .startTime = {6, 0},  // 6:00 AM
-    .daysActive = MONDAY | WEDNESDAY | FRIDAY,
-    .interZoneDelay = 1,
-    .zoneDurations = {5, 5, 5, 5, 5, 5, 5},
-    .name = "Cycle B"
-};
-CycleConfig cycleC = {
-    .enabled = false,
-    .startTime = {6, 0},  // 6:00 AM
-    .daysActive = MONDAY | WEDNESDAY | FRIDAY,
-    .interZoneDelay = 1,
-    .zoneDurations = {5, 5, 5, 5, 5, 5, 5},
-    .name = "Cycle C"
-};
-
-CycleConfig* cycles[] = {&cycleA, &cycleB, &cycleC};
+CycleConfig* cycles[] = {&systemConfig.cycles[0], &systemConfig.cycles[1], &systemConfig.cycles[2]};
 const int NUM_CYCLES = 3; // Made non-static for web_server.h extern
 
 // -----------------------------------------------------------------------------
@@ -355,7 +326,7 @@ void setup() {
   canvas.fillScreen(COLOR_BACKGROUND);
   canvas.setTextSize(2);
   canvas.setTextColor(COLOR_TEXT_PRIMARY);
-  canvas.setCursor(10, 10);
+  canvas.setCursor(LEFT_PADDING, 10);
   canvas.println("Booting...");
   updateScreen();
   delay(3000);
@@ -379,6 +350,12 @@ void setup() {
 
   // Initialize WiFi Manager. It will start connecting if credentials are saved.
   wifi_manager_init();
+
+  // Load configuration from LittleFS
+  if (!loadConfig()) {
+    // If config fails to load, save the defaults
+    saveConfig();
+  }
 
   // Initialize the Web Server
   initWebServer();
@@ -423,7 +400,7 @@ void render() {
     default:
       // Draw an error screen or something
       canvas.fillScreen(COLOR_ERROR);
-      canvas.setCursor(10, 10);
+      canvas.setCursor(LEFT_PADDING, 10);
       canvas.setTextSize(2);
       canvas.setTextColor(COLOR_TEXT_PRIMARY);
       canvas.println("Unknown UI State!");
@@ -820,7 +797,7 @@ void navigateTo(UIState newState, bool isNavigatingBack) {
     case STATE_MANUAL_RUN:
       selectedManualZoneIndex = 0;
       selectingDuration = false;
-      manualRunScrollList.items = &relayLabels[1];
+      manualRunScrollList.items = (const char**)&systemConfig.zoneNames[0];
       manualRunScrollList.num_items = ZONE_COUNT;
       manualRunScrollList.selected_index_ptr = &selectedManualZoneIndex;
       manualRunScrollList.x = 0;
@@ -979,7 +956,7 @@ void navigateTo(UIState newState, bool isNavigatingBack) {
 // -----------------------------------------------------------------------------
 void drawMainMenu() {
   canvas.fillScreen(COLOR_BACKGROUND);
-  drawDateTimeComponent(canvas, 10, 10, currentDateTime, getCurrentDayOfWeek());
+  drawDateTimeComponent(canvas, LEFT_PADDING, 10, currentDateTime, getCurrentDayOfWeek());
   drawScrollableList(canvas, mainMenuScrollList, true);
 }
 
@@ -1051,38 +1028,38 @@ void drawManualRunMenu() {
   if (selectingDuration) {
     canvas.setTextSize(2);
     canvas.setTextColor(COLOR_ACCENT_SECONDARY);
-    canvas.setCursor(10, 10);
+    canvas.setCursor(LEFT_PADDING, 10);
     canvas.println("Manual Run");
     
-    canvas.setCursor(10, 40);
+    canvas.setCursor(LEFT_PADDING, 40);
     canvas.setTextColor(COLOR_SUCCESS);
-    canvas.printf("Zone: %s", relayLabels[selectedManualZoneIndex + 1]);
+    canvas.printf("Zone: %s", systemConfig.zoneNames[selectedManualZoneIndex]);
     
-    canvas.setCursor(10, 70);
+    canvas.setCursor(LEFT_PADDING, 70);
     canvas.setTextColor(COLOR_ACCENT_PRIMARY);
     canvas.println("Select Duration:");
     
-    canvas.setCursor(10, 100);
+    canvas.setCursor(LEFT_PADDING, 100);
     canvas.setTextSize(3);
     canvas.setTextColor(COLOR_TEXT_PRIMARY);
     canvas.printf("%d minutes", selectedManualDuration);
     
     canvas.setTextSize(1);
     canvas.setTextColor(COLOR_TEXT_SECONDARY);
-    canvas.setCursor(10, 140);
+    canvas.setCursor(LEFT_PADDING, 140);
     canvas.println("Common durations:");
-    canvas.setCursor(10, 155);
+    canvas.setCursor(LEFT_PADDING, 155);
     canvas.println("5, 10, 15, 20, 30, 45, 60 min");
-    canvas.setCursor(10, 170);
+    canvas.setCursor(LEFT_PADDING, 170);
     canvas.println("Range: 1-120 minutes");
     
     canvas.setTextSize(1);
     canvas.setTextColor(COLOR_ACCENT_SECONDARY);
-    canvas.setCursor(10, 200);
+    canvas.setCursor(LEFT_PADDING, 200);
     canvas.println("Rotate to adjust duration");
-    canvas.setCursor(10, 215);
+    canvas.setCursor(LEFT_PADDING, 215);
     canvas.println("Press button to start zone");
-    canvas.setCursor(10, 230);
+    canvas.setCursor(LEFT_PADDING, 230);
     canvas.println("Long press to go back");
     
   } else {
@@ -1092,7 +1069,7 @@ void drawManualRunMenu() {
 
 void startManualZone(int zoneIdx) {
   DEBUG_PRINTF("=== STARTING MANUAL ZONE %d ===\n", zoneIdx);
-  DEBUG_PRINTF("Zone name: %s\n", relayLabels[zoneIdx]);
+  DEBUG_PRINTF("Zone name: %s\n", systemConfig.zoneNames[zoneIdx-1]);
   DEBUG_PRINTF("Zone pin: %d\n", relayPins[zoneIdx]);
 
   stopAllActivity();
@@ -1124,10 +1101,10 @@ void drawRunningZoneMenu() {
 
   canvas.setTextSize(2);
   canvas.setTextColor(COLOR_ACCENT_SECONDARY);
-  canvas.setCursor(10, 10);
+  canvas.setCursor(LEFT_PADDING, 10);
   canvas.println("Zone Running");
 
-  drawDateTimeComponent(canvas, 10, 10, currentDateTime, getCurrentDayOfWeek());
+  drawDateTimeComponent(canvas, LEFT_PADDING, 10, currentDateTime, getCurrentDayOfWeek());
 
   unsigned long elapsed = millis() - zoneStartTime;
   unsigned long elapsedSeconds = elapsed / 1000;
@@ -1137,19 +1114,19 @@ void drawRunningZoneMenu() {
   canvas.setTextSize(2);
   if (currentRunningZone > 0) {
     canvas.setTextColor(COLOR_SUCCESS);
-    canvas.setCursor(10, 80);
-    canvas.printf("Active: %s", relayLabels[currentRunningZone]);
+    canvas.setCursor(LEFT_PADDING, 80);
+    canvas.printf("Active: %s", systemConfig.zoneNames[currentRunningZone-1]);
     
-    canvas.setCursor(10, 110);
+    canvas.setCursor(LEFT_PADDING, 110);
     canvas.setTextColor(COLOR_ACCENT_PRIMARY);
     canvas.printf("Running: %02lu:%02lu", elapsedMinutes, remainingSeconds);
     
-    canvas.setCursor(10, 140);
+    canvas.setCursor(LEFT_PADDING, 140);
     canvas.setTextColor(relayStates[PUMP_IDX] ? COLOR_SUCCESS : COLOR_ERROR);
     canvas.printf("Pump: %s", relayStates[PUMP_IDX] ? "ON" : "OFF");
 
     canvas.setTextSize(1);
-    canvas.setCursor(10, 170);
+    canvas.setCursor(LEFT_PADDING, 170);
     canvas.setTextColor(COLOR_TEXT_PRIMARY);
     if (isTimedRun && zoneDuration > 0) {
       unsigned long totalMinutes = zoneDuration / 60000;
@@ -1157,7 +1134,7 @@ void drawRunningZoneMenu() {
       unsigned long remMinutes = remainingTime / 60;
       unsigned long remSeconds = remainingTime % 60;
       canvas.printf("Timed run: %lu min total", totalMinutes);
-      canvas.setCursor(10, 185);
+      canvas.setCursor(LEFT_PADDING, 185);
       canvas.setTextColor(COLOR_ACCENT_SECONDARY);
       canvas.printf("Time left: %02lu:%02lu", remMinutes, remSeconds);
     } else {
@@ -1165,18 +1142,18 @@ void drawRunningZoneMenu() {
     }
   } else {
     canvas.setTextColor(COLOR_ERROR);
-    canvas.setCursor(10, 80);
+    canvas.setCursor(LEFT_PADDING, 80);
     canvas.println("No Zone Active");
   }
 
   canvas.setTextSize(1);
   canvas.setTextColor(COLOR_TEXT_PRIMARY);
-  canvas.setCursor(10, 210);
+  canvas.setCursor(LEFT_PADDING, 210);
   canvas.println("All Zones:");
 
   for (int i = 1; i < NUM_RELAYS; i++) {
     int yPos = 225 + (i-1) * 10;
-    canvas.setCursor(10, yPos);
+    canvas.setCursor(LEFT_PADDING, yPos);
     
     if (relayStates[i]) {
       canvas.setTextColor(COLOR_SUCCESS);
@@ -1184,11 +1161,11 @@ void drawRunningZoneMenu() {
       canvas.setTextColor(COLOR_TEXT_SECONDARY);
     }
     
-    canvas.printf("%s: %s", relayLabels[i], relayStates[i] ? "ON" : "OFF");
+    canvas.printf("%s: %s", systemConfig.zoneNames[i-1], relayStates[i] ? "ON" : "OFF");
   }
 
   canvas.setTextColor(COLOR_ACCENT_SECONDARY);
-  canvas.setCursor(10, 300);
+  canvas.setCursor(LEFT_PADDING, 300);
   canvas.println("Press button to stop zone");
 }
 
@@ -1197,7 +1174,7 @@ void stopAllActivity() {
   
   for (int i = 1; i < NUM_RELAYS; i++) {
     if (relayStates[i]) {
-      DEBUG_PRINTF("Deactivating zone %d (%s) on pin %d\n", i, relayLabels[i], relayPins[i]);
+      DEBUG_PRINTF("Deactivating zone %d (%s) on pin %d\n", i, systemConfig.zoneNames[i-1], relayPins[i]);
     }
     relayStates[i] = false;
     digitalWrite(relayPins[i], LOW);
@@ -1315,7 +1292,7 @@ void drawCycleConfigMenu(const char* label, CycleConfig& cfg) {
 
   canvas.setTextSize(2);
   canvas.setTextColor(COLOR_ACCENT_SECONDARY);
-  canvas.setCursor(10, 10);
+  canvas.setCursor(LEFT_PADDING, 10);
   canvas.print(label);
   canvas.println(" Configuration");
 
@@ -1324,26 +1301,26 @@ void drawCycleConfigMenu(const char* label, CycleConfig& cfg) {
 
   color = (cycleEditFieldIndex == 0) ? COLOR_TEXT_PRIMARY : COLOR_TEXT_SECONDARY;
   canvas.setTextColor(color);
-  canvas.setCursor(10, 40);
+  canvas.setCursor(LEFT_PADDING, 40);
   canvas.printf("Enabled: %s", cfg.enabled ? "YES" : "NO");
 
   color = (cycleEditFieldIndex >= 1 && cycleEditFieldIndex <= 2) ? COLOR_TEXT_PRIMARY : COLOR_TEXT_SECONDARY;
   canvas.setTextColor(color);
-  canvas.setCursor(10, 65);
+  canvas.setCursor(LEFT_PADDING, 65);
   canvas.printf("Start Time: %02d:%02d", cfg.startTime.hour, cfg.startTime.minute);
 
   color = (cycleEditFieldIndex == 3) ? COLOR_TEXT_PRIMARY : COLOR_TEXT_SECONDARY;
   canvas.setTextColor(color);
-  canvas.setCursor(10, 90);
+  canvas.setCursor(LEFT_PADDING, 90);
   canvas.printf("Inter-Zone Delay: %d min", cfg.interZoneDelay);
 
   canvas.setTextSize(1);
-  canvas.setCursor(10, 115);
+  canvas.setCursor(LEFT_PADDING, 115);
   canvas.setTextColor(COLOR_ACCENT_SECONDARY);
   canvas.println("Days Active:");
   const char* dayLabels[] = {"Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"};
   for (int i = 0; i < 7; i++) {
-    int xPos = 10 + i * 45;
+    int xPos = LEFT_PADDING + i * 45;
     color = (cycleEditFieldIndex == (4 + i)) ? COLOR_TEXT_PRIMARY : COLOR_TEXT_SECONDARY;
     canvas.setTextColor(color);
     canvas.setCursor(xPos, 130);
@@ -1355,7 +1332,7 @@ void drawCycleConfigMenu(const char* label, CycleConfig& cfg) {
 
   canvas.setTextSize(1);
   canvas.setTextColor(COLOR_TEXT_PRIMARY);
-  canvas.setCursor(10, 290);
+  canvas.setCursor(LEFT_PADDING, 290);
   canvas.println("Rotate to change, Press to select next.");
   canvas.println("Long press to exit.");
 }
@@ -1409,6 +1386,7 @@ void handleCycleEditButton(CycleConfig &cfg, UIState thisState, const char* prog
     if (selected_zone_index == cycleZonesScrollList.num_items) {
       cycleEditFieldIndex = 0;
       editingCycleZone = false;
+      saveConfig(); // Save changes when exiting
       goBack();
       return;
     }
@@ -1463,7 +1441,7 @@ void updateCycleRun() {
 
       if (!relayStates[zoneToRun] || !relayStates[PUMP_IDX]) {
 
-        DEBUG_PRINTF("Activating cycle zone %d (%s) and pump\n", zoneToRun, relayLabels[zoneToRun]);
+        DEBUG_PRINTF("Activating cycle zone %d (%s) and pump\n", zoneToRun, systemConfig.zoneNames[zoneToRun-1]);
         relayStates[zoneToRun] = true;
         digitalWrite(relayPins[zoneToRun], HIGH);
         relayStates[PUMP_IDX] = true;
@@ -1493,29 +1471,29 @@ void updateCycleRun() {
   }
 }
 
+
+
 void drawCycleRunningMenu() {
   canvas.fillScreen(COLOR_BACKGROUND);
 
+  drawDateTimeComponent(canvas, LEFT_PADDING, 10, currentDateTime, getCurrentDayOfWeek());
   canvas.setTextSize(2);
   canvas.setTextColor(COLOR_ACCENT_SECONDARY);
-  canvas.setCursor(10, 10);
-  canvas.println("Cycle Running");
 
-  drawDateTimeComponent(canvas, 10, 10, currentDateTime, getCurrentDayOfWeek());
 
   if (currentRunningCycle != -1) {
     CycleConfig* cfg = cycles[currentRunningCycle];
     canvas.setTextColor(COLOR_SUCCESS);
-    canvas.setCursor(10, 80);
-    canvas.printf("Cycle: %s", cfg->name);
+    canvas.setRelativeCursor(LEFT_PADDING, TOP_PADDING);
+    canvas.printf("Running: %s", cfg->name);
 
     if (inInterZoneDelay) {
       canvas.setTextColor(COLOR_ACCENT_PRIMARY);
-      canvas.setCursor(10, 110);
+      canvas.setCursor(LEFT_PADDING, 110);
       unsigned long elapsedDelay = (millis() - cycleInterZoneDelayStartTime) / 1000;
       unsigned long remainingDelay = (unsigned long)cfg->interZoneDelay * 60 - elapsedDelay;
       canvas.printf("Delay: %02lu:%02lu", remainingDelay / 60, remainingDelay % 60);
-      canvas.setCursor(10, 140);
+      canvas.setCursor(LEFT_PADDING, 140);
       canvas.setTextColor(COLOR_TEXT_PRIMARY);
       canvas.println("Waiting for next zone...");
     } else if (currentCycleZoneIndex < ZONE_COUNT) {
@@ -1525,42 +1503,31 @@ void drawCycleRunningMenu() {
       unsigned long remainingZoneTime = (zoneRunDuration - elapsedZoneTime) / 1000;
 
       canvas.setTextColor(COLOR_ACCENT_PRIMARY);
-      canvas.setCursor(10, 110);
-      canvas.printf("Zone %d: %s", zoneToRun, relayLabels[zoneToRun]);
-      canvas.setCursor(10, 140);
+      canvas.setCursor(LEFT_PADDING, 110);
+      canvas.printf("Zone %d: %s", zoneToRun, systemConfig.zoneNames[zoneToRun-1]);
+      canvas.setCursor(LEFT_PADDING, 140);
       canvas.printf("Time left: %02lu:%02lu", remainingZoneTime / 60, remainingZoneTime % 60);
     } else {
       canvas.setTextColor(COLOR_SUCCESS);
-      canvas.setCursor(10, 110);
+      canvas.setCursor(LEFT_PADDING, 110);
       canvas.println("Cycle Finishing...");
     }
 
-    canvas.setCursor(10, 170);
+    canvas.setCursor(LEFT_PADDING, 170);
     canvas.setTextColor(relayStates[PUMP_IDX] ? COLOR_SUCCESS : COLOR_ERROR);
     canvas.printf("Pump: %s", relayStates[PUMP_IDX] ? "ON" : "OFF");
 
     canvas.setTextSize(1);
     canvas.setTextColor(COLOR_TEXT_PRIMARY);
-    canvas.setCursor(10, 200);
-    canvas.println("Current Status:");
-    for (int i = 1; i < NUM_RELAYS; i++) {
-      int yPos = 215 + (i-1) * 10;
-      canvas.setCursor(10, yPos);
-      if (relayStates[i]) {
-        canvas.setTextColor(COLOR_SUCCESS);
-      } else {
-        canvas.setTextColor(COLOR_TEXT_SECONDARY);
-      }
-      canvas.printf("%s: %s", relayLabels[i], relayStates[i] ? "ON" : "OFF");
-    }
+    canvas.setCursor(LEFT_PADDING, 200);
   } else {
     canvas.setTextColor(COLOR_ERROR);
-    canvas.setCursor(10, 80);
+    canvas.setCursor(LEFT_PADDING, 80);
     canvas.println("No Cycle Active");
   }
 
   canvas.setTextColor(COLOR_ACCENT_SECONDARY);
-  canvas.setCursor(10, 300);
+  canvas.setCursor(LEFT_PADDING, 300);
   canvas.println("Press button to stop cycle");
 }
 
@@ -1574,23 +1541,23 @@ void drawSettingsMenu() {
   canvas.setTextSize(1);
   int yPos = 10;
 
-  canvas.setCursor(10, yPos);
+  canvas.setCursor(LEFT_PADDING, yPos);
   if (wifi_manager_is_connected()) {
     canvas.setTextColor(COLOR_SUCCESS);
     canvas.printf("WiFi: %s", wifi_manager_get_ssid().c_str());
     yPos += 12;
-    canvas.setCursor(10, yPos);
+    canvas.setCursor(LEFT_PADDING, yPos);
     canvas.printf("IP: %s", wifi_manager_get_ip().c_str());
   } else {
     canvas.setTextColor(COLOR_ERROR);
     canvas.println("WiFi: Not Connected");
     yPos += 12;
-    canvas.setCursor(10, yPos);
+    canvas.setCursor(LEFT_PADDING, yPos);
     canvas.println("IP: ---.---.---.---");
   }
   yPos += 15;
 
-  canvas.setCursor(10, yPos);
+  canvas.setCursor(LEFT_PADDING, yPos);
   if (wifi_manager_is_time_synced()) {
     canvas.setTextColor(COLOR_SUCCESS);
     canvas.println("Time: NTP Synced");
@@ -1614,11 +1581,11 @@ void drawWiFiResetMenu() {
   canvas.fillScreen(COLOR_BACKGROUND);
   canvas.setTextSize(2);
   canvas.setTextColor(COLOR_ACCENT_SECONDARY);
-  canvas.setCursor(10, 10);
+  canvas.setCursor(LEFT_PADDING, 10);
   canvas.println("WiFi Reset");
 
   canvas.setTextColor(COLOR_TEXT_PRIMARY);
-  canvas.setCursor(10, 50);
+  canvas.setCursor(LEFT_PADDING, 50);
   canvas.println("Clearing saved WiFi");
   canvas.println("credentials and");
   canvas.println("restarting device...");
@@ -1633,60 +1600,60 @@ void drawSystemInfoMenu() {
   canvas.fillScreen(COLOR_BACKGROUND);
   canvas.setTextSize(2);
   canvas.setTextColor(COLOR_ACCENT_SECONDARY);
-  canvas.setCursor(10, 10);
+  canvas.setCursor(LEFT_PADDING, 10);
   canvas.println("System Info");
 
   canvas.setTextSize(1);
   canvas.setTextColor(COLOR_TEXT_PRIMARY);
   
   int y = 40;
-  canvas.setCursor(10, y);
+  canvas.setCursor(LEFT_PADDING, y);
   canvas.println("=== Hardware ===");
   y += 15;
   
-  canvas.setCursor(10, y);
+  canvas.setCursor(LEFT_PADDING, y);
   canvas.printf("Board: ESP32-C6, Rev: %d", ESP.getChipRevision());
   y += 12;
   
-  canvas.setCursor(10, y);
+  canvas.setCursor(LEFT_PADDING, y);
   canvas.printf("Free Heap: %d bytes", ESP.getFreeHeap());
   y += 20;
 
-  canvas.setCursor(10, y);
+  canvas.setCursor(LEFT_PADDING, y);
   canvas.println("=== Network ===");
   y += 15;
   
   if (wifi_manager_is_connected()) {
-    canvas.setCursor(10, y);
+    canvas.setCursor(LEFT_PADDING, y);
     canvas.printf("SSID: %s", wifi_manager_get_ssid().c_str());
     y += 12;
     
-    canvas.setCursor(10, y);
+    canvas.setCursor(LEFT_PADDING, y);
     canvas.printf("IP: %s", wifi_manager_get_ip().c_str());
     y += 12;
     
-    canvas.setCursor(10, y);
+    canvas.setCursor(LEFT_PADDING, y);
     canvas.printf("Signal: %d dBm", wifi_manager_get_rssi());
     y += 12;
     
-    canvas.setCursor(10, y);
+    canvas.setCursor(LEFT_PADDING, y);
     canvas.printf("MAC: %s", wifi_manager_get_mac_address().c_str());
     y += 20;
   } else {
-    canvas.setCursor(10, y);
+    canvas.setCursor(LEFT_PADDING, y);
     canvas.println("WiFi: Not Connected");
     y += 20;
   }
 
-  canvas.setCursor(10, y);
+  canvas.setCursor(LEFT_PADDING, y);
   canvas.println("=== Time ===");
   y += 15;
   
-  canvas.setCursor(10, y);
+  canvas.setCursor(LEFT_PADDING, y);
   if (wifi_manager_is_time_synced()) {
     canvas.println("Source: NTP Server");
     y += 12;
-    canvas.setCursor(10, y);
+    canvas.setCursor(LEFT_PADDING, y);
     unsigned long lastSyncMillis = wifi_manager_get_last_ntp_sync();
     if (lastSyncMillis > 0) {
         canvas.printf("Last Sync: %lu min ago", (millis() - lastSyncMillis) / 60000);
@@ -1698,7 +1665,7 @@ void drawSystemInfoMenu() {
   }
 
   canvas.setTextColor(COLOR_ACCENT_SECONDARY);
-  canvas.setCursor(10, 225);
+  canvas.setCursor(LEFT_PADDING, 225);
   canvas.println("Press button to return");
 }
 
@@ -1714,7 +1681,7 @@ void startTestMode() {
   
   stopAllActivity();
   
-  DEBUG_PRINTF("Turning on relay %d (%s)\n", currentTestRelay, relayLabels[currentTestRelay]);
+  DEBUG_PRINTF("Turning on relay %d (%s)\n", currentTestRelay, currentTestRelay == 0 ? "Pump" : systemConfig.zoneNames[currentTestRelay-1]);
   relayStates[currentTestRelay] = true;
   digitalWrite(relayPins[currentTestRelay], HIGH);
   
@@ -1731,7 +1698,7 @@ void updateTestMode() {
   
   if (elapsed >= TEST_INTERVAL) {
     if (currentTestRelay < NUM_RELAYS) {
-      DEBUG_PRINTF("Turning off relay %d (%s)\n", currentTestRelay, relayLabels[currentTestRelay]);
+      DEBUG_PRINTF("Turning off relay %d (%s)\n", currentTestRelay, currentTestRelay == 0 ? "Pump" : systemConfig.zoneNames[currentTestRelay-1]);
       relayStates[currentTestRelay] = false;
       digitalWrite(relayPins[currentTestRelay], LOW);
     }
@@ -1745,7 +1712,7 @@ void updateTestMode() {
       return;
     }
     
-    DEBUG_PRINTF("Turning on relay %d (%s)\n", currentTestRelay, relayLabels[currentTestRelay]);
+    DEBUG_PRINTF("Turning on relay %d (%s)\n", currentTestRelay, currentTestRelay == 0 ? "Pump" : systemConfig.zoneNames[currentTestRelay-1]);
     relayStates[currentTestRelay] = true;
     digitalWrite(relayPins[currentTestRelay], HIGH);
     
@@ -1760,24 +1727,24 @@ void drawTestModeMenu() {
   
   canvas.setTextSize(2);
   canvas.setTextColor(COLOR_ACCENT_SECONDARY);
-  canvas.setCursor(10, 10);
+  canvas.setCursor(LEFT_PADDING, 10);
   canvas.println("Test Mode");
   
   canvas.setTextSize(2);
   canvas.setTextColor(COLOR_TEXT_PRIMARY);
-  canvas.setCursor(10, 50);
+  canvas.setCursor(LEFT_PADDING, 50);
   
   if (currentTestRelay < NUM_RELAYS) {
-    canvas.printf("Testing: %s", relayLabels[currentTestRelay]);
+    canvas.printf("Testing: %s", currentTestRelay == 0 ? "Pump" : systemConfig.zoneNames[currentTestRelay-1]);
     
     unsigned long elapsed = millis() - testModeStartTime;
     unsigned long remaining = (TEST_INTERVAL - elapsed) / 1000;
     
-    canvas.setCursor(10, 80);
+    canvas.setCursor(LEFT_PADDING, 80);
     canvas.setTextColor(COLOR_SUCCESS);
     canvas.printf("Time left: %lu sec", remaining);
     
-    canvas.setCursor(10, 110);
+    canvas.setCursor(LEFT_PADDING, 110);
     canvas.setTextColor(COLOR_ACCENT_PRIMARY);
     canvas.printf("Relay %d of %d", currentTestRelay + 1, NUM_RELAYS);
   } else {
@@ -1786,12 +1753,12 @@ void drawTestModeMenu() {
   
   canvas.setTextSize(1);
   canvas.setTextColor(COLOR_TEXT_PRIMARY);
-  canvas.setCursor(10, 150);
+  canvas.setCursor(LEFT_PADDING, 150);
   canvas.println("Relay Status:");
   
   for (int i = 0; i < NUM_RELAYS; i++) {
     int yPos = 170 + i * 12;
-    canvas.setCursor(10, yPos);
+    canvas.setCursor(LEFT_PADDING, yPos);
     
     if (i == currentTestRelay && testModeActive) {
       canvas.setTextColor(COLOR_SUCCESS);
@@ -1799,11 +1766,11 @@ void drawTestModeMenu() {
       canvas.setTextColor(COLOR_TEXT_SECONDARY);
     }
     
-    canvas.printf("%s: %s", relayLabels[i], relayStates[i] ? "ON" : "OFF");
+    canvas.printf("%s: %s", i == 0 ? "Pump" : systemConfig.zoneNames[i-1], relayStates[i] ? "ON" : "OFF");
   }
   
   canvas.setTextColor(COLOR_ACCENT_SECONDARY);
-  canvas.setCursor(10, 280);
+  canvas.setCursor(LEFT_PADDING, 280);
   canvas.println("Press button to cancel test");
 }
 

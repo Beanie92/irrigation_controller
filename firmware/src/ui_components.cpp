@@ -1,11 +1,11 @@
 #include "ui_components.h"
-#include <Adafruit_GFX.h> // For GFXcanvas16
+#include "CustomCanvas.h" // For CustomCanvas
 #include "color_config.h" // For UI color theme
 #include <Arduino.h>     // For sprintf, etc.
 
 
 // Helper function to set up calculated metrics for a scrollable list
-void setupScrollableListMetrics(ScrollableList& list, GFXcanvas16& canvas) {
+void setupScrollableListMetrics(ScrollableList& list, CustomCanvas& canvas) {
     // Calculate item render height (text height + padding)
     // Assuming 8 pixels per text size unit for height, plus 4 pixels padding
     list.item_render_height = (8 * list.item_text_size) + 4;
@@ -29,7 +29,7 @@ void setupScrollableListMetrics(ScrollableList& list, GFXcanvas16& canvas) {
 }
 
 // Helper function to draw a scrollable list
-void drawScrollableList(GFXcanvas16& canvas, ScrollableList& list, bool is_active) {
+void drawScrollableList(CustomCanvas& canvas, ScrollableList& list, bool is_active) {
     // Clear the component's background area
     canvas.fillRect(list.x, list.y, list.width, list.height, COLOR_LIST_BACKGROUND);
 
@@ -130,7 +130,7 @@ void handleScrollableListInput(ScrollableList& list, long encoder_diff) {
 // -----------------------------------------------------------------------------
 //                       Date/Time Display Component
 // -----------------------------------------------------------------------------
-void drawDateTimeComponent(GFXcanvas16& canvas, int x, int y, const SystemDateTime& dt, DayOfWeek dow) {
+void drawDateTimeComponent(CustomCanvas& canvas, int x, int y, const SystemDateTime& dt, DayOfWeek dow) {
     canvas.setCursor(x, y);
     canvas.setTextColor(COLOR_DATETIME_TEXT);
     canvas.setTextSize(2);
@@ -146,7 +146,7 @@ void drawDateTimeComponent(GFXcanvas16& canvas, int x, int y, const SystemDateTi
         case FRIDAY:    dow_str = "Fri"; break;
         case SATURDAY:  dow_str = "Sat"; break;
         default:        dow_str = "---"; break;
-    }
+}
 
     // Format example: YYYY-MM-DD HH:MM:SS (Day)
     char buf[40];
@@ -165,7 +165,7 @@ void drawDateTimeComponent(GFXcanvas16& canvas, int x, int y, const SystemDateTi
 //                         General UI Helper Functions
 // -----------------------------------------------------------------------------
 
-void setRelativeCursor(GFXcanvas16& canvas, int16_t dx, int16_t dy) {
+void setRelativeCursor(CustomCanvas& canvas, int16_t dx, int16_t dy) {
     int16_t currentX = canvas.getCursorX();
     int16_t currentY = canvas.getCursorY();
     canvas.setCursor(currentX + dx, currentY + dy);

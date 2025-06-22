@@ -28,6 +28,9 @@
 #define COLOR_RGB565_PURPLE      0x780F
 #define COLOR_RGB565_LIGHTGREY   0xD69A
 
+#define LEFT_PADDING 10
+#define TOP_PADDING 5
+
 
 // -----------------------------------------------------------------------------
 //                           UI Color Theme Definitions

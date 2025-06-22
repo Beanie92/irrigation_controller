@@ -1,4 +1,5 @@
 #include "web_server.h"
+#include "config_manager.h"
 #include <ESPAsyncWebServer.h>
 #include <ArduinoJson.h>
 
@@ -66,6 +67,12 @@ const char index_html[] PROGMEM = R"rawliteral(
       <h2>Irrigation Cycles</h2>
       <div id="cyclesConfig">Loading...</div>
       <button onclick="fetchCycles()">Refresh Cycles</button>
+    </div>
+
+    <div class="section">
+      <h2>Zone Names</h2>
+      <div id="zoneNamesConfig">Loading...</div>
+      <button onclick="saveZoneNames()">Save Zone Names</button>
     </div>
 
     <div id="message"></div>
@@ -273,10 +280,63 @@ const char index_html[] PROGMEM = R"rawliteral(
     });
   }
 
+  function fetchZoneNames() {
+    fetch('/api/zonenames')
+      .then(response => response.json())
+      .then(data => {
+        const container = document.getElementById('zoneNamesConfig');
+        container.innerHTML = '';
+        data.zoneNames.forEach((name, index) => {
+          const label = document.createElement('label');
+          label.setAttribute('for', `zoneName_${index}`);
+          label.textContent = `Zone ${index + 1}:`;
+          container.appendChild(label);
+
+          const input = document.createElement('input');
+          input.type = 'text';
+          input.id = `zoneName_${index}`;
+          input.value = name;
+          input.maxLength = 31;
+          container.appendChild(input);
+        });
+      })
+      .catch(err => {
+        console.error('Error fetching zone names:', err);
+        showMessage('Failed to load zone names.', 'error');
+      });
+  }
+
+  function saveZoneNames() {
+    const names = [];
+    for (let i = 0; i < ${ZONE_COUNT}; i++) {
+      names.push(document.getElementById(`zoneName_${i}`).value);
+    }
+    
+    fetch('/api/zonenames', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ zoneNames: names })
+    })
+    .then(response => response.json())
+    .then(res => {
+      if(res.success) {
+        showMessage('Zone names updated successfully!', 'success');
+        fetchStatus(); // Refresh status to update names everywhere
+      } else {
+        showMessage('Failed to update zone names: ' + (res.message || ''), 'error');
+      }
+    })
+    .catch(err => {
+        console.error('Error saving zone names:', err);
+        showMessage('Error saving zone names.', 'error');
+    });
+  }
+
   // Initial data fetch
   window.onload = () => {
     fetchStatus();
     fetchCycles();
+    fetchZoneNames();
   };
 
   function testClick() {
@@ -346,7 +406,11 @@ void handleGetStatus(AsyncWebServerRequest *request) {
     JsonArray relayStatusArray = doc.createNestedArray("relays");
     for (int i = 0; i < NUM_RELAYS; i++) {
         JsonObject relayObj = relayStatusArray.createNestedObject();
-        relayObj["name"] = relayLabels[i];
+        if (i == 0) {
+            relayObj["name"] = "Pump";
+        } else {
+            relayObj["name"] = systemConfig.zoneNames[i-1];
+        }
         relayObj["state"] = relayStates[i];
     }
     doc["currentOperation"] = currentOperation;
@@ -419,7 +483,12 @@ void handleSetCycle(AsyncWebServerRequest *request, uint8_t *data, size_t len, s
                 cfg->zoneDurations[i] = zoneDurations[i].as<uint16_t>();
             }
         }
-        request->send(200, "application/json", "{\"success\":true, \"message\":\"Cycle updated\"}");
+        
+        if (saveConfig()) {
+            request->send(200, "application/json", "{\"success\":true, \"message\":\"Cycle updated\"}");
+        } else {
+            request->send(500, "application/json", "{\"success\":false, \"message\":\"Failed to save config\"}");
+        }
     }
 }
 
@@ -466,16 +535,56 @@ void handleTest(AsyncWebServerRequest *request) {
     request->send(200, "text/plain", "Test button handled");
 }
 
+void handleGetZoneNames(AsyncWebServerRequest *request) {
+    Serial.println("Handling get zone names request.");
+    StaticJsonDocument<512> doc;
+    JsonArray zoneNamesArray = doc.createNestedArray("zoneNames");
+    for (int i = 0; i < ZONE_COUNT; i++) {
+        zoneNamesArray.add(systemConfig.zoneNames[i]);
+    }
+    String output;
+    serializeJson(doc, output);
+    request->send(200, "application/json", output);
+}
+
+void handleSetZoneNames(AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
+    Serial.println("Handling set zone names request.");
+    if (index == 0) {
+        StaticJsonDocument<512> doc;
+        DeserializationError error = deserializeJson(doc, (const char*)data, len);
+        if (error) {
+            request->send(400, "application/json", "{\"success\":false, \"message\":\"Invalid JSON\"}");
+            return;
+        }
+
+        JsonArrayConst newNames = doc["zoneNames"];
+        if (newNames && newNames.size() == ZONE_COUNT) {
+            for (int i = 0; i < ZONE_COUNT; i++) {
+                strlcpy(systemConfig.zoneNames[i], newNames[i].as<const char*>(), sizeof(systemConfig.zoneNames[i]));
+            }
+            if (saveConfig()) {
+                request->send(200, "application/json", "{\"success\":true, \"message\":\"Zone names updated\"}");
+            } else {
+                request->send(500, "application/json", "{\"success\":false, \"message\":\"Failed to save config\"}");
+            }
+        } else {
+            request->send(400, "application/json", "{\"success\":false, \"message\":\"Invalid data\"}");
+        }
+    }
+}
+
 void initWebServer() {
     Serial.println("Initializing web server...");
     server.on("/", HTTP_GET, handleRoot);
     server.on("/api/status", HTTP_GET, handleGetStatus);
     server.on("/api/test", HTTP_GET, handleTest);
     server.on("/api/cycles", HTTP_GET, handleGetCycles);
+    server.on("/api/zonenames", HTTP_GET, handleGetZoneNames);
 
     // POST handlers with body
     server.on("/api/cycle", HTTP_POST, [](AsyncWebServerRequest *request){}, NULL, handleSetCycle);
     server.on("/api/manual", HTTP_POST, [](AsyncWebServerRequest *request){}, NULL, handleManualControl);
+    server.on("/api/zonenames", HTTP_POST, [](AsyncWebServerRequest *request){}, NULL, handleSetZoneNames);
 
     server.onNotFound(handleNotFound);
     server.begin();
