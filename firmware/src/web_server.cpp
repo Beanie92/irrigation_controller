@@ -39,7 +39,7 @@ const char index_html[] PROGMEM = R"rawliteral(
     h1, h2 { color: #0056b3; }
     .section { margin-bottom: 20px; padding: 15px; padding-top: 0px; border: 1px solid #ddd; border-radius: 4px; }
     label { display: block; margin-bottom: 5px; font-weight: bold; }
-    .form-row label { display: inline-block; margin-right: 10px; margin-bottom: 0; flex-shrink: 0; }
+    .form-row label { display: inline-block; margin-right: 10px; margin-bottom: 0; flex-shrink: 0; width: 150px; text-align: right; }
     input[type="text"], input[type="number"], select {
       width: 100%; 
       padding: 10px; 
