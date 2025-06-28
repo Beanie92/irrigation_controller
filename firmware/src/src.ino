@@ -1464,6 +1464,13 @@ void updateCycleRun() {
         relayStates[zoneToRun] = false;
         digitalWrite(relayPins[zoneToRun], LOW);
         
+        // If there's a delay, turn off the pump.
+        if (cfg->interZoneDelay > 0) {
+            relayStates[PUMP_IDX] = false;
+            digitalWrite(relayPins[PUMP_IDX], LOW);
+            DEBUG_PRINTLN("Pump turned OFF for inter-zone delay.");
+        }
+        
         inInterZoneDelay = true;
         cycleInterZoneDelayStartTime = currentTime;
       }

@@ -35,7 +35,21 @@ const char index_html[] PROGMEM = R"rawliteral(
       width: 100%;
       margin: 10px;
     }
-    .header-img { max-width: 100px; max-height: 100px; vertical-align: middle; margin-right: 10px; object-fit: contain; }
+    .header {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      margin-bottom: 0px;
+    }
+    .header-img { 
+      max-width: 200px; 
+      max-height: 200px; 
+      object-fit: contain; 
+    }
+    h1 {
+      font-size: 1.5em;
+      margin-top: 10px;
+    }
     h1, h2 { color: #0056b3; }
     .section { margin-bottom: 20px; padding: 15px; padding-top: 0px; border: 1px solid #ddd; border-radius: 4px; }
     label { display: block; margin-bottom: 5px; font-weight: bold; }
@@ -108,11 +122,15 @@ const char index_html[] PROGMEM = R"rawliteral(
     }
     .success { background-color: #d4edda; color: #155724; border-bottom: 1px solid #c3e6cb; }
     .error { background-color: #f8d7da; color: #721c24; border-bottom: 1px solid #f5c6cb; }
+
   </style>
 </head>
 <body>
   <div class="container">
-    <h1><img src="data:image/webp;base64,##FAVICON_BASE64##" class="header-img">Irrigation Controller</h1>
+    <div class="header">
+      <img src="data:image/webp;base64,##FAVICON_BASE64##" class="header-img">
+      <h1>Irrigation Controller</h1>
+    </div>
 
     <div class="section">
       <h2>System Status</h2>
