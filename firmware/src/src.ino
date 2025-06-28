@@ -1144,8 +1144,8 @@ void drawRunningZoneMenu() {
     canvas.setTextColor(relayStates[PUMP_IDX] ? COLOR_SUCCESS : COLOR_ERROR);
     canvas.printf("Pump: %s", relayStates[PUMP_IDX] ? "ON" : "OFF");
 
+    canvas.setNewLine();
     canvas.setTextSize(1);
-    canvas.setCursor(LEFT_PADDING, 170);
     canvas.setTextColor(COLOR_TEXT_PRIMARY);
     if (isTimedRun && zoneDuration > 0) {
       unsigned long totalMinutes = zoneDuration / 60000;
@@ -1153,7 +1153,7 @@ void drawRunningZoneMenu() {
       unsigned long remMinutes = remainingTime / 60;
       unsigned long remSeconds = remainingTime % 60;
       canvas.printf("Timed run: %lu min total", totalMinutes);
-      canvas.setCursor(LEFT_PADDING, 185);
+      canvas.setNewLine();
       canvas.setTextColor(COLOR_ACCENT_SECONDARY);
       canvas.printf("Time left: %02lu:%02lu", remMinutes, remSeconds);
     } else {
@@ -1161,30 +1161,13 @@ void drawRunningZoneMenu() {
     }
   } else {
     canvas.setTextColor(COLOR_ERROR);
-    canvas.setCursor(LEFT_PADDING, 80);
+    canvas.setNewLine();
     canvas.println("No Zone Active");
   }
 
+  canvas.setNewLine();
   canvas.setTextSize(1);
-  canvas.setTextColor(COLOR_TEXT_PRIMARY);
-  canvas.setCursor(LEFT_PADDING, 210);
-  canvas.println("All Zones:");
-
-  for (int i = 1; i < NUM_RELAYS; i++) {
-    int yPos = 225 + (i-1) * 10;
-    canvas.setCursor(LEFT_PADDING, yPos);
-    
-    if (relayStates[i]) {
-      canvas.setTextColor(COLOR_SUCCESS);
-    } else {
-      canvas.setTextColor(COLOR_TEXT_SECONDARY);
-    }
-    
-    canvas.printf("%s: %s", systemConfig.zoneNames[i-1], relayStates[i] ? "ON" : "OFF");
-  }
-
   canvas.setTextColor(COLOR_ACCENT_SECONDARY);
-  canvas.setCursor(LEFT_PADDING, 300);
   canvas.println("Press button to stop zone");
 }
 
