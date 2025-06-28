@@ -134,6 +134,7 @@ void drawDateTimeComponent(CustomCanvas& canvas, int x, int y, const SystemDateT
     canvas.setCursor(x, y);
     canvas.setTextColor(COLOR_DATETIME_TEXT);
     canvas.setTextSize(2);
+    canvas.fillRect(0, 0, SCREEN_WIDTH, 40, COLOR_SECONDARY_BACKGROUND);
 
     // Get day of the week string
     const char* dow_str = "";

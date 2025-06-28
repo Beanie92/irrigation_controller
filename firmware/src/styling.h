@@ -31,6 +31,9 @@
 #define LEFT_PADDING 10
 #define TOP_PADDING 5
 
+#define SCREEN_HEIGHT 240 
+#define SCREEN_WIDTH 320
+
 
 // -----------------------------------------------------------------------------
 //                           UI Color Theme Definitions
@@ -68,7 +71,8 @@
 
 // --- Theme 3: Ocean ---
 #define COLOR_BACKGROUND      0xFFFF
-#define COLOR_TEXT_PRIMARY    COLOR_RGB565_WHITE
+#define COLOR_SECONDARY_BACKGROUND      COLOR_RGB565_LIGHTGREY
+#define COLOR_TEXT_PRIMARY    COLOR_RGB565_BLACK
 #define COLOR_TEXT_SECONDARY  COLOR_RGB565_CYAN
 #define COLOR_ACCENT_PRIMARY  COLOR_RGB565_BLUE
 #define COLOR_ACCENT_SECONDARY COLOR_RGB565_LIGHTBLUE

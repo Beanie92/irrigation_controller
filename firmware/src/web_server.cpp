@@ -83,8 +83,13 @@ const char index_html[] PROGMEM = R"rawliteral(
       border-top: none;
       border-radius: 0 0 4px 4px;
     }
-    .days { display: flex; justify-content: center; }
-    .days button { padding: 5px 8px; margin: 2px; background-color: #6c757d; flex-grow: 1; text-align: center; min-width: 40px; }
+    .days {
+    display: flex;
+    justify-content: left;
+    flex-wrap: wrap;
+    padding-bottom: 5px;
+    }
+    .days button { padding: 5px 8px; margin: 2px; background-color: #6c757d; flex-grow: 1; text-align: center; width: 40px; }
     .days button.active { background-color: #28a745; }
     #message { 
       position: fixed;
