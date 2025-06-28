@@ -94,8 +94,8 @@ void setupScrollableListMetrics(ScrollableList& list, CustomCanvas& canvas);
 void drawScrollableList(CustomCanvas& canvas, ScrollableList& list, bool is_active);
 void handleScrollableListInput(ScrollableList& list, long encoder_diff);
 
-// Date/Time Display Component
-void drawDateTimeComponent(CustomCanvas& canvas, int x, int y, const SystemDateTime& dt, DayOfWeek dow);
+// Header Display Component
+void drawHeader(CustomCanvas& canvas, int x, int y, const SystemDateTime& dt, DayOfWeek dow, String ipAddress);
 
 // General UI Helpers
 void setRelativeCursor(CustomCanvas& canvas, int16_t dx, int16_t dy);

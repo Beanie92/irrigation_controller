@@ -805,9 +805,9 @@ void navigateTo(UIState newState, bool isNavigatingBack) {
       mainMenuScrollList.num_items = MAIN_MENU_ITEMS;
       mainMenuScrollList.selected_index_ptr = &selectedMainMenuIndex;
       mainMenuScrollList.x = 0;
-      mainMenuScrollList.y = 70;
+      mainMenuScrollList.y = HEADER_HEIGHT;
       mainMenuScrollList.width = 320;
-      mainMenuScrollList.height = 240 - 70;
+      mainMenuScrollList.height = 240 - HEADER_HEIGHT;
       mainMenuScrollList.item_text_size = 2;
       mainMenuScrollList.title = "Main Menu";
       mainMenuScrollList.title_text_size = 2;
@@ -827,9 +827,9 @@ void navigateTo(UIState newState, bool isNavigatingBack) {
       manualRunScrollList.num_items = ZONE_COUNT;
       manualRunScrollList.selected_index_ptr = &selectedManualZoneIndex;
       manualRunScrollList.x = 0;
-      manualRunScrollList.y = 0;
+      manualRunScrollList.y = HEADER_HEIGHT;
       manualRunScrollList.width = 320;
-      manualRunScrollList.height = 240;
+      manualRunScrollList.height = 240 - HEADER_HEIGHT;
       manualRunScrollList.item_text_size = 2;
       manualRunScrollList.title = "Select Zone";
       manualRunScrollList.title_text_size = 2;
@@ -842,9 +842,9 @@ void navigateTo(UIState newState, bool isNavigatingBack) {
       cyclesMenuScrollList.num_items = CYCLES_MENU_ITEMS;
       cyclesMenuScrollList.selected_index_ptr = &selectedCyclesMenuIndex;
       cyclesMenuScrollList.x = 0;
-      cyclesMenuScrollList.y = 70;
+      cyclesMenuScrollList.y = HEADER_HEIGHT;
       cyclesMenuScrollList.width = 320;
-      cyclesMenuScrollList.height = 240 - 70;
+      cyclesMenuScrollList.height = 240 - HEADER_HEIGHT;
       cyclesMenuScrollList.item_text_size = 2;
       cyclesMenuScrollList.title = "Cycles";
       cyclesMenuScrollList.title_text_size = 2;
@@ -865,9 +865,9 @@ void navigateTo(UIState newState, bool isNavigatingBack) {
         cycleSubMenuScrollList.num_items = CYCLE_SUB_MENU_ITEMS;
         cycleSubMenuScrollList.selected_index_ptr = &selectedCycleSubMenuIndex;
         cycleSubMenuScrollList.x = 0;
-        cycleSubMenuScrollList.y = 70;
+        cycleSubMenuScrollList.y = HEADER_HEIGHT;
         cycleSubMenuScrollList.width = 320;
-        cycleSubMenuScrollList.height = 240 - 70;
+        cycleSubMenuScrollList.height = 240 - HEADER_HEIGHT;
         cycleSubMenuScrollList.item_text_size = 2;
         cycleSubMenuScrollList.title = progLabel;
         cycleSubMenuScrollList.title_text_size = 2;
@@ -882,9 +882,9 @@ void navigateTo(UIState newState, bool isNavigatingBack) {
       settingsMenuScrollList.num_items = SETTINGS_MENU_ITEMS;
       settingsMenuScrollList.selected_index_ptr = &selectedSettingsMenuIndex;
       settingsMenuScrollList.x = 0;
-      settingsMenuScrollList.y = 75; 
+      settingsMenuScrollList.y = HEADER_HEIGHT; 
       settingsMenuScrollList.width = 320;
-      settingsMenuScrollList.height = 240 - settingsMenuScrollList.y;
+      settingsMenuScrollList.height = 240 - HEADER_HEIGHT;
       settingsMenuScrollList.item_text_size = 2;
       settingsMenuScrollList.title = "Settings";
       settingsMenuScrollList.title_text_size = 2;
@@ -897,9 +897,9 @@ void navigateTo(UIState newState, bool isNavigatingBack) {
       setTimeScrollList.num_items = 6; // 6 fields
       setTimeScrollList.selected_index_ptr = &timeEditFieldIndex;
       setTimeScrollList.x = 0;
-      setTimeScrollList.y = 70;
+      setTimeScrollList.y = HEADER_HEIGHT;
       setTimeScrollList.width = 320;
-      setTimeScrollList.height = 240 - 70;
+      setTimeScrollList.height = 240 - HEADER_HEIGHT;
       setTimeScrollList.item_text_size = 2;
       setTimeScrollList.title = "Set System Time";
       setTimeScrollList.title_text_size = 2;
@@ -912,9 +912,9 @@ void navigateTo(UIState newState, bool isNavigatingBack) {
       wifiSetupLauncherScrollList.num_items = WIFI_SETUP_LAUNCHER_MENU_ITEMS;
       wifiSetupLauncherScrollList.selected_index_ptr = &selectedWiFiSetupLauncherIndex;
       wifiSetupLauncherScrollList.x = 0;
-      wifiSetupLauncherScrollList.y = 70;
+      wifiSetupLauncherScrollList.y = HEADER_HEIGHT;
       wifiSetupLauncherScrollList.width = 320;
-      wifiSetupLauncherScrollList.height = 240 - 70;
+      wifiSetupLauncherScrollList.height = 240 - HEADER_HEIGHT;
       wifiSetupLauncherScrollList.item_text_size = 2;
       wifiSetupLauncherScrollList.title = "WiFi Setup";
       wifiSetupLauncherScrollList.title_text_size = 2;
@@ -988,7 +988,7 @@ void navigateTo(UIState newState, bool isNavigatingBack) {
 // -----------------------------------------------------------------------------
 void drawMainMenu() {
   canvas.fillScreen(COLOR_BACKGROUND);
-  drawDateTimeComponent(canvas, LEFT_PADDING, 10, currentDateTime, getCurrentDayOfWeek());
+  drawHeader(canvas, LEFT_PADDING, 10, currentDateTime, getCurrentDayOfWeek(), wifi_manager_get_ip());
   drawScrollableList(canvas, mainMenuScrollList, true);
 }
 
@@ -997,6 +997,7 @@ void drawMainMenu() {
 // -----------------------------------------------------------------------------
 void drawCyclesMenu() {
   canvas.fillScreen(COLOR_BACKGROUND);
+  drawHeader(canvas, LEFT_PADDING, 10, currentDateTime, getCurrentDayOfWeek(), wifi_manager_get_ip());
   drawScrollableList(canvas, cyclesMenuScrollList, true);
 }
 
@@ -1005,6 +1006,7 @@ void drawCyclesMenu() {
 // -----------------------------------------------------------------------------
 void drawCycleSubMenu(const char* label) {
   canvas.fillScreen(COLOR_BACKGROUND);
+  drawHeader(canvas, LEFT_PADDING, 10, currentDateTime, getCurrentDayOfWeek(), wifi_manager_get_ip());
   cycleSubMenuScrollList.title = label;
   drawScrollableList(canvas, cycleSubMenuScrollList, true);
 }
@@ -1056,44 +1058,30 @@ DayOfWeek getCurrentDayOfWeek() {
 // -----------------------------------------------------------------------------
 void drawManualRunMenu() {
   canvas.fillScreen(COLOR_BACKGROUND);
+  drawHeader(canvas, LEFT_PADDING, 10, currentDateTime, getCurrentDayOfWeek(), wifi_manager_get_ip());
 
   if (selectingDuration) {
     canvas.setTextSize(2);
     canvas.setTextColor(COLOR_ACCENT_SECONDARY);
-    canvas.setCursor(LEFT_PADDING, 10);
-    canvas.println("Manual Run");
+    canvas.setCursor(LEFT_PADDING, HEADER_HEIGHT + 10);
+    canvas.print("Manual Run");
     
-    canvas.setCursor(LEFT_PADDING, 40);
+    canvas.setNewLine();
     canvas.setTextColor(COLOR_SUCCESS);
     canvas.printf("Zone: %s", systemConfig.zoneNames[selectedManualZoneIndex]);
     
-    canvas.setCursor(LEFT_PADDING, 70);
+    canvas.setNewLine();
     canvas.setTextColor(COLOR_ACCENT_PRIMARY);
-    canvas.println("Select Duration:");
+    canvas.print("Select Duration:");
     
-    canvas.setCursor(LEFT_PADDING, 100);
+    canvas.setNewLine();
     canvas.setTextSize(3);
     canvas.setTextColor(COLOR_TEXT_PRIMARY);
-    canvas.printf("%d minutes", selectedManualDuration);
+    canvas.printf("< %d > minutes ", selectedManualDuration);
     
+    canvas.setNewLine();
     canvas.setTextSize(1);
-    canvas.setTextColor(COLOR_TEXT_SECONDARY);
-    canvas.setCursor(LEFT_PADDING, 140);
-    canvas.println("Common durations:");
-    canvas.setCursor(LEFT_PADDING, 155);
-    canvas.println("5, 10, 15, 20, 30, 45, 60 min");
-    canvas.setCursor(LEFT_PADDING, 170);
-    canvas.println("Range: 1-120 minutes");
-    
-    canvas.setTextSize(1);
-    canvas.setTextColor(COLOR_ACCENT_SECONDARY);
-    canvas.setCursor(LEFT_PADDING, 200);
-    canvas.println("Rotate to adjust duration");
-    canvas.setCursor(LEFT_PADDING, 215);
-    canvas.println("Press button to start zone");
-    canvas.setCursor(LEFT_PADDING, 230);
-    canvas.println("Long press to go back");
-    
+    canvas.print("Range: 1-120 minutes");
   } else {
     drawScrollableList(canvas, manualRunScrollList, true);
   }
@@ -1130,13 +1118,12 @@ void startManualZone(int zoneIdx) {
 
 void drawRunningZoneMenu() {
   canvas.fillScreen(COLOR_BACKGROUND);
+  drawHeader(canvas, LEFT_PADDING, 10, currentDateTime, getCurrentDayOfWeek(), wifi_manager_get_ip());
 
   canvas.setTextSize(2);
   canvas.setTextColor(COLOR_ACCENT_SECONDARY);
-  canvas.setCursor(LEFT_PADDING, 10);
+  canvas.setCursor(LEFT_PADDING, HEADER_HEIGHT + 10);
   canvas.println("Zone Running");
-
-  drawDateTimeComponent(canvas, LEFT_PADDING, 10, currentDateTime, getCurrentDayOfWeek());
 
   unsigned long elapsed = millis() - zoneStartTime;
   unsigned long elapsedSeconds = elapsed / 1000;
@@ -1146,7 +1133,7 @@ void drawRunningZoneMenu() {
   canvas.setTextSize(2);
   if (currentRunningZone > 0) {
     canvas.setTextColor(COLOR_SUCCESS);
-    canvas.setCursor(LEFT_PADDING, 80);
+    canvas.setCursor(LEFT_PADDING, HEADER_HEIGHT + 40);
     canvas.printf("Active: %s", systemConfig.zoneNames[currentRunningZone-1]);
     
     canvas.setCursor(LEFT_PADDING, 110);
@@ -1241,6 +1228,7 @@ char setTimeDisplayStrings[7][32];
 const char* setTimeDisplayPointers[7];
 
 void drawSetSystemTimeMenu() {
+  drawHeader(canvas, LEFT_PADDING, 10, currentDateTime, getCurrentDayOfWeek(), wifi_manager_get_ip());
   sprintf(setTimeDisplayStrings[0], "Year  : %d", currentDateTime.year);
   sprintf(setTimeDisplayStrings[1], "Month : %d", currentDateTime.month);
   sprintf(setTimeDisplayStrings[2], "Day   : %d", currentDateTime.day);
@@ -1321,6 +1309,7 @@ void handleSetSystemTimeButton() {
 // -----------------------------------------------------------------------------
 void drawCycleConfigMenu(const char* label, CycleConfig& cfg) {
   canvas.fillScreen(COLOR_BACKGROUND);
+  drawHeader(canvas, LEFT_PADDING, 10, currentDateTime, getCurrentDayOfWeek(), wifi_manager_get_ip());
 
   // Update the display strings for the zone list before drawing
   for (int i = 0; i < ZONE_COUNT; i++) {
@@ -1329,7 +1318,7 @@ void drawCycleConfigMenu(const char* label, CycleConfig& cfg) {
 
   canvas.setTextSize(2);
   canvas.setTextColor(COLOR_ACCENT_SECONDARY);
-  canvas.setCursor(LEFT_PADDING, 10);
+  canvas.setCursor(LEFT_PADDING, HEADER_HEIGHT + 10);
   canvas.print(label);
   canvas.println(" Configuration");
 
@@ -1338,21 +1327,21 @@ void drawCycleConfigMenu(const char* label, CycleConfig& cfg) {
 
   color = (cycleEditFieldIndex == 0) ? COLOR_TEXT_PRIMARY : COLOR_TEXT_SECONDARY;
   canvas.setTextColor(color);
-  canvas.setCursor(LEFT_PADDING, 40);
+  canvas.setCursor(LEFT_PADDING, HEADER_HEIGHT + 40);
   canvas.printf("Enabled: %s", cfg.enabled ? "YES" : "NO");
 
   color = (cycleEditFieldIndex >= 1 && cycleEditFieldIndex <= 2) ? COLOR_TEXT_PRIMARY : COLOR_TEXT_SECONDARY;
   canvas.setTextColor(color);
-  canvas.setCursor(LEFT_PADDING, 65);
+  canvas.setCursor(LEFT_PADDING, HEADER_HEIGHT + 65);
   canvas.printf("Start Time: %02d:%02d", cfg.startTime.hour, cfg.startTime.minute);
 
   color = (cycleEditFieldIndex == 3) ? COLOR_TEXT_PRIMARY : COLOR_TEXT_SECONDARY;
   canvas.setTextColor(color);
-  canvas.setCursor(LEFT_PADDING, 90);
+  canvas.setCursor(LEFT_PADDING, HEADER_HEIGHT + 90);
   canvas.printf("Inter-Zone Delay: %d min", cfg.interZoneDelay);
 
   canvas.setTextSize(1);
-  canvas.setCursor(LEFT_PADDING, 115);
+  canvas.setCursor(LEFT_PADDING, HEADER_HEIGHT + 115);
   canvas.setTextColor(COLOR_ACCENT_SECONDARY);
   canvas.println("Days Active:");
   const char* dayLabels[] = {"Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"};
@@ -1360,7 +1349,7 @@ void drawCycleConfigMenu(const char* label, CycleConfig& cfg) {
     int xPos = LEFT_PADDING + i * 45;
     color = (cycleEditFieldIndex == (4 + i)) ? COLOR_TEXT_PRIMARY : COLOR_TEXT_SECONDARY;
     canvas.setTextColor(color);
-    canvas.setCursor(xPos, 130);
+    canvas.setCursor(xPos, HEADER_HEIGHT + 130);
     canvas.printf("%s %c", dayLabels[i], (cfg.daysActive & (1 << i)) ? '*' : ' ');
   }
 
@@ -1513,7 +1502,7 @@ void updateCycleRun() {
 void drawCycleRunningMenu() {
   canvas.fillScreen(COLOR_BACKGROUND);
 
-  drawDateTimeComponent(canvas, LEFT_PADDING, 10, currentDateTime, getCurrentDayOfWeek());
+  drawHeader(canvas, LEFT_PADDING, 10, currentDateTime, getCurrentDayOfWeek(), wifi_manager_get_ip());
   canvas.setTextSize(2);
   canvas.setTextColor(COLOR_ACCENT_SECONDARY);
 
@@ -1521,7 +1510,7 @@ void drawCycleRunningMenu() {
   if (currentRunningCycle != -1) {
     CycleConfig* cfg = cycles[currentRunningCycle];
     canvas.setTextColor(COLOR_SUCCESS);
-    canvas.setRelativeCursor(LEFT_PADDING, TOP_PADDING);
+    canvas.setCursor(LEFT_PADDING, HEADER_HEIGHT + 10);
     canvas.printf("Running: %s", cfg->name);
 
     if (inInterZoneDelay) {
@@ -1574,9 +1563,10 @@ void drawCycleRunningMenu() {
 // -----------------------------------------------------------------------------
 void drawSettingsMenu() {
   canvas.fillScreen(COLOR_BACKGROUND);
+  drawHeader(canvas, LEFT_PADDING, 10, currentDateTime, getCurrentDayOfWeek(), wifi_manager_get_ip());
   
   canvas.setTextSize(1);
-  int yPos = 10;
+  int yPos = HEADER_HEIGHT + 10;
 
   canvas.setCursor(LEFT_PADDING, yPos);
   if (wifi_manager_is_connected()) {
@@ -1611,18 +1601,20 @@ void drawSettingsMenu() {
 
 void drawWiFiSetupLauncherMenu() {
   canvas.fillScreen(COLOR_BACKGROUND);
+  drawHeader(canvas, LEFT_PADDING, 10, currentDateTime, getCurrentDayOfWeek(), wifi_manager_get_ip());
   drawScrollableList(canvas, wifiSetupLauncherScrollList, true);
 }
 
 void drawWiFiResetMenu() {
   canvas.fillScreen(COLOR_BACKGROUND);
+  drawHeader(canvas, LEFT_PADDING, 10, currentDateTime, getCurrentDayOfWeek(), wifi_manager_get_ip());
   canvas.setTextSize(2);
   canvas.setTextColor(COLOR_ACCENT_SECONDARY);
-  canvas.setCursor(LEFT_PADDING, 10);
+  canvas.setCursor(LEFT_PADDING, HEADER_HEIGHT + 10);
   canvas.println("WiFi Reset");
 
   canvas.setTextColor(COLOR_TEXT_PRIMARY);
-  canvas.setCursor(LEFT_PADDING, 50);
+  canvas.setCursor(LEFT_PADDING, HEADER_HEIGHT + 50);
   canvas.println("Clearing saved WiFi");
   canvas.println("credentials and");
   canvas.println("restarting device...");
@@ -1635,15 +1627,16 @@ void drawWiFiResetMenu() {
 
 void drawSystemInfoMenu() {
   canvas.fillScreen(COLOR_BACKGROUND);
+  drawHeader(canvas, LEFT_PADDING, 10, currentDateTime, getCurrentDayOfWeek(), wifi_manager_get_ip());
   canvas.setTextSize(2);
   canvas.setTextColor(COLOR_ACCENT_SECONDARY);
-  canvas.setCursor(LEFT_PADDING, 10);
+  canvas.setCursor(LEFT_PADDING, HEADER_HEIGHT + 10);
   canvas.println("System Info");
 
   canvas.setTextSize(1);
   canvas.setTextColor(COLOR_TEXT_PRIMARY);
   
-  int y = 40;
+  int y = HEADER_HEIGHT + 40;
   canvas.setCursor(LEFT_PADDING, y);
   canvas.println("=== Hardware ===");
   y += 15;
@@ -1761,15 +1754,16 @@ void updateTestMode() {
 
 void drawTestModeMenu() {
   canvas.fillScreen(COLOR_BACKGROUND);
+  drawHeader(canvas, LEFT_PADDING, 10, currentDateTime, getCurrentDayOfWeek(), wifi_manager_get_ip());
   
   canvas.setTextSize(2);
   canvas.setTextColor(COLOR_ACCENT_SECONDARY);
-  canvas.setCursor(LEFT_PADDING, 10);
-  canvas.println("Test Mode");
+  canvas.setCursor(LEFT_PADDING, HEADER_HEIGHT + 10);
+  canvas.print("Test Mode");
   
   canvas.setTextSize(2);
   canvas.setTextColor(COLOR_TEXT_PRIMARY);
-  canvas.setCursor(LEFT_PADDING, 50);
+  canvas.setNewLine();
   
   if (currentTestRelay < NUM_RELAYS) {
     canvas.printf("Testing: %s", currentTestRelay == 0 ? "Pump" : systemConfig.zoneNames[currentTestRelay-1]);
@@ -1777,38 +1771,34 @@ void drawTestModeMenu() {
     unsigned long elapsed = millis() - testModeStartTime;
     unsigned long remaining = (TEST_INTERVAL - elapsed) / 1000;
     
-    canvas.setCursor(LEFT_PADDING, 80);
+    canvas.setNewLine();
     canvas.setTextColor(COLOR_SUCCESS);
     canvas.printf("Time left: %lu sec", remaining);
     
-    canvas.setCursor(LEFT_PADDING, 110);
+    canvas.setNewLine();
     canvas.setTextColor(COLOR_ACCENT_PRIMARY);
     canvas.printf("Relay %d of %d", currentTestRelay + 1, NUM_RELAYS);
   } else {
-    canvas.println("Test Complete!");
+    canvas.print("Test Complete!");
   }
   
+  canvas.setNewLine();
   canvas.setTextSize(1);
   canvas.setTextColor(COLOR_TEXT_PRIMARY);
-  canvas.setCursor(LEFT_PADDING, 150);
-  canvas.println("Relay Status:");
+  
+  canvas.print("Relay Status:");
   
   for (int i = 0; i < NUM_RELAYS; i++) {
-    int yPos = 170 + i * 12;
-    canvas.setCursor(LEFT_PADDING, yPos);
+      
     
     if (i == currentTestRelay && testModeActive) {
       canvas.setTextColor(COLOR_SUCCESS);
     } else {
       canvas.setTextColor(COLOR_TEXT_SECONDARY);
     }
-    
+    canvas.setNewLine();
     canvas.printf("%s: %s", i == 0 ? "Pump" : systemConfig.zoneNames[i-1], relayStates[i] ? "ON" : "OFF");
   }
-  
-  canvas.setTextColor(COLOR_ACCENT_SECONDARY);
-  canvas.setCursor(LEFT_PADDING, 280);
-  canvas.println("Press button to cancel test");
 }
 
 void stopTestMode() {

@@ -128,13 +128,13 @@ void handleScrollableListInput(ScrollableList& list, long encoder_diff) {
 }
 
 // -----------------------------------------------------------------------------
-//                       Date/Time Display Component
+//                         Header Display Component
 // -----------------------------------------------------------------------------
-void drawDateTimeComponent(CustomCanvas& canvas, int x, int y, const SystemDateTime& dt, DayOfWeek dow) {
+void drawHeader(CustomCanvas& canvas, int x, int y, const SystemDateTime& dt, DayOfWeek dow, String ipAddress) {
     canvas.setCursor(x, y);
     canvas.setTextColor(COLOR_DATETIME_TEXT);
     canvas.setTextSize(2);
-    canvas.fillRect(0, 0, SCREEN_WIDTH, 40, COLOR_SECONDARY_BACKGROUND);
+    canvas.fillRect(0, 0, SCREEN_WIDTH, HEADER_HEIGHT, COLOR_SECONDARY_BACKGROUND);
 
     // Get day of the week string
     const char* dow_str = "";
@@ -149,7 +149,7 @@ void drawDateTimeComponent(CustomCanvas& canvas, int x, int y, const SystemDateT
         default:        dow_str = "---"; break;
 }
 
-    // Format example: YYYY-MM-DD HH:MM:SS (Day)
+    // Format example: YYYY-MM-DD HH:MM (Day)
     char buf[40];
     sprintf(buf, "%04d-%02d-%02d %02d:%02d (%s)",
         dt.year,
@@ -160,6 +160,12 @@ void drawDateTimeComponent(CustomCanvas& canvas, int x, int y, const SystemDateT
         dow_str
     );
     canvas.println(buf);
+
+    // Draw IP address
+    canvas.setTextSize(1);
+    canvas.setCursor(x, y + 20); // Position below the date/time
+    canvas.setTextColor(COLOR_TEXT_SECONDARY);
+    canvas.println(ipAddress);
 }
 
 // -----------------------------------------------------------------------------

@@ -33,6 +33,7 @@
 
 #define SCREEN_HEIGHT 240 
 #define SCREEN_WIDTH 320
+#define HEADER_HEIGHT 40
 
 
 // -----------------------------------------------------------------------------
