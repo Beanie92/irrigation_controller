@@ -43,6 +43,7 @@ static void display_connection_success();
 static void display_connection_failure(const char* reason);
 
 void wifi_manager_init() {
+
     DEBUG_PRINTLN("Initializing WiFi Manager in blocking mode...");
     
     isConnecting = true;
@@ -51,6 +52,8 @@ void wifi_manager_init() {
     wm.setDebugOutput(DEBUG_ENABLED);
     wm.setConfigPortalTimeout(180);
     wm.setConnectTimeout(20);
+    wm.setCleanConnect(true);
+    wm.setConnectRetries(5); // Increase connection retries
 
     // Custom callback to allow cancellation, though it's less effective in a blocking setup
     wm.setAPCallback([](WiFiManager* myWiFiManager) {
