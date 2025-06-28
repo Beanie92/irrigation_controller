@@ -23,6 +23,17 @@ extern const char* relayLabels[];
 extern const int NUM_RELAYS;
 extern bool relayStates[]; // To show current status of relays
 
+// Additional externs for running state
+extern int currentRunningCycle;
+extern int currentCycleZoneIndex;
+extern unsigned long cycleZoneStartTime;
+extern bool inInterZoneDelay;
+extern unsigned long cycleInterZoneDelayStartTime;
+extern int currentRunningZone;
+extern unsigned long zoneStartTime;
+extern unsigned long zoneDuration;
+
+
 // Web server functions
 void initWebServer();
 void handleRoot(AsyncWebServerRequest *request);

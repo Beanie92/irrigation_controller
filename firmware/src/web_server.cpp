@@ -114,11 +114,16 @@ const char index_html[] PROGMEM = R"rawliteral(
     <div class="section">
       <h2>System Status</h2>
       <div class="status" id="statusDateTime">Loading...</div>
+      <div class="status" id="runningStatus" style="display: none;"></div>
       <div class="status">
         <strong>Relay States:</strong>
         <div class="zone-status" id="statusRelays">Loading...</div>
       </div>
       <button onclick="fetchStatus()">Refresh Status</button>
+      <label for="autoRefreshToggle" style="display: inline-block; margin-left: 10px;">
+        <input type="checkbox" id="autoRefreshToggle" onchange="toggleAutoRefresh(this.checked)">
+        Auto-Refresh
+      </label>
     </div>
 
     <div class="section">
@@ -155,6 +160,16 @@ const char index_html[] PROGMEM = R"rawliteral(
 <script>
   const dayNames = ["SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"];
   let zoneNames = [];
+  let autoRefreshInterval = null;
+
+  function toggleAutoRefresh(is_enabled) {
+    if (is_enabled && !autoRefreshInterval) {
+      autoRefreshInterval = setInterval(fetchStatus, 5000);
+    } else if (!is_enabled && autoRefreshInterval) {
+      clearInterval(autoRefreshInterval);
+      autoRefreshInterval = null;
+    }
+  }
 
   function showMessage(text, type) {
     const msgDiv = document.getElementById('message');
@@ -181,6 +196,21 @@ const char index_html[] PROGMEM = R"rawliteral(
         document.getElementById('statusDateTime').textContent = 
           `Current Time: ${dt.year}-${String(dt.month).padStart(2,'0')}-${String(dt.day).padStart(2,'0')} ${String(dt.hour).padStart(2,'0')}:${String(dt.minute).padStart(2,'0')}:${String(dt.second).padStart(2,'0')} (${data.dayOfWeek})`;
         
+        const runningStatusDiv = document.getElementById('runningStatus');
+        if (data.runningInfo.operation !== "OP_NONE") {
+          let html = `<strong>${data.runningInfo.description}</strong><br>`;
+          if (data.runningInfo.time_elapsed) {
+            html += `Time Elapsed: ${data.runningInfo.time_elapsed}<br>`;
+          }
+          if (data.runningInfo.time_remaining) {
+            html += `Time Remaining: ${data.runningInfo.time_remaining}`;
+          }
+          runningStatusDiv.innerHTML = html;
+          runningStatusDiv.style.display = 'block';
+        } else {
+          runningStatusDiv.style.display = 'none';
+        }
+
         const relaysDiv = document.getElementById('statusRelays');
         relaysDiv.innerHTML = '';
         data.relays.forEach(relay => {
@@ -518,7 +548,7 @@ void handleNotFound(AsyncWebServerRequest *request) {
 
 void handleGetStatus(AsyncWebServerRequest *request) {
     Serial.println("Handling get status request.");
-    StaticJsonDocument<512> doc;
+    StaticJsonDocument<1024> doc;
     doc["firmwareVersion"] = "1.0";
 
     JsonObject dateTimeObj = doc.createNestedObject("dateTime");
@@ -542,6 +572,47 @@ void handleGetStatus(AsyncWebServerRequest *request) {
         relayObj["state"] = relayStates[i];
     }
     doc["currentOperation"] = currentOperation;
+
+    JsonObject runningInfo = doc.createNestedObject("runningInfo");
+    String operation_description = "Idle";
+    String time_elapsed_str = "";
+    String time_remaining_str = "";
+
+    switch(currentOperation) {
+        case OP_MANUAL_ZONE: {
+            operation_description = "Manual Zone Running: " + String(systemConfig.zoneNames[currentRunningZone-1]);
+            unsigned long elapsed_s = (millis() - zoneStartTime) / 1000;
+            unsigned long remaining_s = (zoneDuration - (millis() - zoneStartTime)) / 1000;
+            time_elapsed_str = String(elapsed_s / 60) + "m " + String(elapsed_s % 60) + "s";
+            time_remaining_str = String(remaining_s / 60) + "m " + String(remaining_s % 60) + "s";
+            break;
+        }
+        case OP_MANUAL_CYCLE:
+        case OP_SCHEDULED_CYCLE: {
+            if (currentRunningCycle != -1) {
+                CycleConfig* cfg = cycles[currentRunningCycle];
+                operation_description = String(cfg->name) + " Running";
+                if (inInterZoneDelay) {
+                    unsigned long elapsed_delay_s = (millis() - cycleInterZoneDelayStartTime) / 1000;
+                    unsigned long total_delay_s = (unsigned long)cfg->interZoneDelay * 60;
+                    time_elapsed_str = "Delaying for " + String(total_delay_s - elapsed_delay_s) + "s";
+                } else if (currentCycleZoneIndex < ZONE_COUNT) {
+                    unsigned long elapsed_s = (millis() - cycleZoneStartTime) / 1000;
+                    unsigned long total_s = (unsigned long)cfg->zoneDurations[currentCycleZoneIndex] * 60;
+                    time_elapsed_str = "Zone " + String(currentCycleZoneIndex + 1) + ": " + String(elapsed_s / 60) + "m " + String(elapsed_s % 60) + "s";
+                    time_remaining_str = String((total_s - elapsed_s) / 60) + "m " + String((total_s - elapsed_s) % 60) + "s";
+                }
+            }
+            break;
+        }
+        default:
+            break;
+    }
+
+    runningInfo["operation"] = currentOperation == OP_NONE ? "OP_NONE" : "OP_RUNNING";
+    runningInfo["description"] = operation_description;
+    runningInfo["time_elapsed"] = time_elapsed_str;
+    runningInfo["time_remaining"] = time_remaining_str;
 
     String output;
     serializeJson(doc, output);
