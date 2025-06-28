@@ -53,7 +53,10 @@ const char index_html[] PROGMEM = R"rawliteral(
       background-color: #007bff; color: white; padding: 10px 15px; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; margin-right: 5px;
     }
     button:hover { background-color: #0056b3; }
+    .btn-stop { background-color: #dc3545; }
+    .btn-stop:hover { background-color: #c82333; }
     .status { padding: 10px;  background-color: #e9ecef; border-radius: 4px; margin-bottom:15px; }
+    .status strong { display: block; margin-bottom: 10px; }
     .zone-status { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
     .form-row { display: flex; align-items: center; margin-bottom: 10px; }
     .zone { 
@@ -119,9 +122,8 @@ const char index_html[] PROGMEM = R"rawliteral(
         <strong>Relay States:</strong>
         <div class="zone-status" id="statusRelays">Loading...</div>
       </div>
-      <button onclick="fetchStatus()">Refresh Status</button>
       <label for="autoRefreshToggle" style="display: inline-block; margin-left: 10px;">
-        <input type="checkbox" id="autoRefreshToggle" onchange="toggleAutoRefresh(this.checked)">
+        <input type="checkbox" id="autoRefreshToggle" onchange="toggleAutoRefresh(this.checked)" checked>
         Auto-Refresh
       </label>
     </div>
@@ -139,7 +141,7 @@ const char index_html[] PROGMEM = R"rawliteral(
         <input type="number" id="manualDuration" value="5" min="1" max="120">
       </div>
       <button onclick="startManualZone()">Start Zone</button>
-      <button onclick="stopAll()">Stop All</button>
+      <button onclick="stopAll()" class="btn-stop">Stop All</button>
     </div>
     
     <div class="section">
@@ -492,6 +494,7 @@ const char index_html[] PROGMEM = R"rawliteral(
     fetchZoneNames().then(() => {
       fetchCycles(); // Fetch cycles only after zone names are loaded
     });
+    toggleAutoRefresh(true);
   };
 
   function testClick() {
