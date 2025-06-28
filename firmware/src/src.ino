@@ -451,6 +451,13 @@ void loop() {
   // Render the UI if needed
   render();
 
+  // Handle screen dimming
+  if (!isScreenDimmed && (millis() - lastActivityTime > inactivityTimeout)) {
+    isScreenDimmed = true;
+    st7789_set_backlight(false); // Dim the screen using the driver
+    DEBUG_PRINTLN("Screen dimmed due to inactivity.");
+  }
+
   // Check for scheduled cycles if no other operation is active
   if (currentOperation == OP_NONE) {
     DayOfWeek currentDay = getCurrentDayOfWeek();
@@ -521,12 +528,14 @@ void handleEncoderMovement() {
   lastEncoderPosition = newVal;
   if (diff == 0) return;
 
-  if (isScreenDimmed) {
-    st7789_set_backlight(true); // Full brightness using driver
-    isScreenDimmed = false;
-    DEBUG_PRINTLN("Screen brightness restored.");
-  }
   lastActivityTime = millis();
+  if (isScreenDimmed) {
+    st7789_set_backlight(true); // Full brightness
+    isScreenDimmed = false;
+    uiDirty = true; // Redraw the screen
+    DEBUG_PRINTLN("Screen woken up by encoder movement.");
+    return; // Ignore the first input
+  }
   uiDirty = true;
 
   DEBUG_PRINTF("Encoder moved: diff=%ld, state=%d\n", diff, currentState);
@@ -603,12 +612,14 @@ void handleButtonPress() {
       DEBUG_PRINTF("Button pressed in state %d\n", currentState);
       encoder_button_pressed = true;
 
-      if (isScreenDimmed) {
-        st7789_set_backlight(true); // Full brightness using driver
-        isScreenDimmed = false;
-        DEBUG_PRINTLN("Screen brightness restored.");
-      }
       lastActivityTime = millis();
+      if (isScreenDimmed) {
+        st7789_set_backlight(true); // Full brightness
+        isScreenDimmed = false;
+        uiDirty = true; // Redraw the screen
+        DEBUG_PRINTLN("Screen woken up by button press.");
+        return; // Ignore the first input
+      }
       uiDirty = true;
 
       // State-Specific Handling
