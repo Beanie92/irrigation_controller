@@ -143,16 +143,6 @@ Each cycle (A, B, C) can be configured with:
 - **Start Time**: When the cycle should begin
 - **Active Days**: Which days of the week to run
 
-## Screenshots
-
-### On-Device UI
-
-*(Placeholder for on-device UI screenshot)*
-
-### Web Interface
-
-*(Placeholder for web interface screenshot)*
-
 ## Troubleshooting
 
 ### WiFi Connection Issues

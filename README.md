@@ -1,4 +1,4 @@
-# Irrigation Controller
+# Hydr8: Irrigation Controller
 
 ![image](https://github.com/user-attachments/assets/09214a03-ba51-4387-acdd-ce2d5f2400e1)
 
@@ -13,6 +13,17 @@ An ESP32-C6 based irrigation controller with a web interface, manual controls, a
 - **TFT Display**: A clear color display shows system status and menus.
 - **8-Channel Control**: Manages a pump and up to seven irrigation zones.
 - **Fully Offline Mode**: Operates completely without a WiFi connection, with all features accessible via the device interface.
+
+## Screenshots
+
+### Web Interface
+
+*(Placeholder for web interface screenshot)*
+
+### On-Device UI
+
+*(Placeholder for on-device UI screenshot)*
+
 
 ## Hardware
 
@@ -44,3 +55,4 @@ Build before the mess of wires:
 Build after the mess of wires:
 
 ![20250608_222624](https://github.com/user-attachments/assets/e1cf5acc-12de-4254-afaa-bb1e9ae71cd1)
+
