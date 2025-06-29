@@ -17,7 +17,7 @@ ESP32-C6 based irrigation controller with WiFi connectivity and NTP time synchro
 - ESP32-C6 development board (DFRobot Beetle ESP32-C6)
 - ST7789 240x320 TFT display
 - KY-040 rotary encoder with button
-- 8-channel relay module
+- 4 x 2-channel relay module
 - Power supply suitable for your relay/pump requirements
 
 ## Pin Configuration
