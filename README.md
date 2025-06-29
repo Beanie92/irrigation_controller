@@ -10,7 +10,7 @@ An ESP32-C6 based irrigation controller with a web interface, manual controls, a
 - **Manual Control**: Use the physical rotary encoder for on-the-spot adjustments.
 - **Flexible Scheduling**: Set up to three different irrigation cycles (A, B, C) with custom start times, zone durations, and active days.
 - **NTP Time Sync**: Automatically keeps time updated from the internet.
-- **TFT Display**: A clear color display shows system status and menus.
+- **IPS Display**: A clear color display shows system status and menus with auto dimming.
 - **8-Channel Control**: Manages a pump and up to seven irrigation zones.
 - **Fully Offline Mode**: Operates completely without a WiFi connection, with all features accessible via the device interface.
 
@@ -18,11 +18,12 @@ An ESP32-C6 based irrigation controller with a web interface, manual controls, a
 
 ### Web Interface
 
-*(Placeholder for web interface screenshot)*
+![image](https://github.com/user-attachments/assets/95d74a90-c597-4952-88c8-14035d9b3d4a)
+
 
 ### On-Device UI
 
-*(Placeholder for on-device UI screenshot)*
+![Screenshot from 2025-06-29 21-27-22](https://github.com/user-attachments/assets/f2cf33d0-eba3-4ca9-87fd-d835c4b20bc7)
 
 
 ## Hardware
