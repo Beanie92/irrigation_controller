@@ -12,21 +12,28 @@ An ESP32-C6 based irrigation controller with a web interface, manual controls, a
 - **NTP Time Sync**: Automatically keeps time updated from the internet.
 - **TFT Display**: A clear color display shows system status and menus.
 - **8-Channel Control**: Manages a pump and up to seven irrigation zones.
+- **Fully Offline Mode**: Operates completely without a WiFi connection, with all features accessible via the device interface.
 
 ## Hardware
 
 - **CAD Files**: [View on OnShape](https://cad.onshape.com/documents/08bfc36dcbbf2398b4b87e4d/w/2dae12507b7940b517cf4320/e/530747a0889b15aeda69d576)
-- **Electronics**:
-  - ESP32-C6 Development Board (DFRobot Beetle)
-  - ST7789 240x320 TFT Display
-  - KY-040 Rotary Encoder
-  - 4 *2-Channel Relay Module
+- **Electronics** (sourced from [robotics.org.za](https://www.robotics.org.za/)):
+  - FireBeetle 2 ESP32-C6 IoT Development Board
+  - Wave 2 Inch IPS Display 320x240 SPI ST7789
+  - Rotary Encoder Module - Breadboard Ready
+  - 4 x 2-Channel Relay Module Opto Isolated 3.3V & 5V Logic 10A Load
+  - Battery LiPo 5000mAh 3.7V
+  - WCS1800 Hall 35A Current Sensor
 
 ## Firmware
 
 The firmware is built using the Arduino framework for the ESP32. It includes a web server, a full UI for the display, and handles all the logic for scheduling and manual control.
 
 For detailed instructions on how to set up the development environment, configure the firmware, and upload it to the ESP32, please see the [firmware README](./firmware/README.md).
+
+## Future Work
+
+- **Smarter Current Monitoring**: Implement logic to use the WCS1800 current sensor to detect pump failures, dry running, or other anomalies, and provide alerts or shut down the system automatically.
 
 ## Gallery
 
