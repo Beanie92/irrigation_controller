@@ -74,6 +74,7 @@ struct ScrollableList {
     // Display Properties
     int x, y, width, height;      // Bounding box for the entire component on screen
     int item_text_size;           // Font size for list items
+    uint16_t selected_bg_color;   // Background color for the selected item
 
     // Optional Title
     const char* title;

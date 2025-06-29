@@ -6,6 +6,9 @@
 
 // Helper function to set up calculated metrics for a scrollable list
 void setupScrollableListMetrics(ScrollableList& list, CustomCanvas& canvas) {
+    // Set default background color for selection
+    list.selected_bg_color = COLOR_LIST_ITEM_SELECTED_BG;
+    
     // Calculate item render height (text height + padding)
     // Assuming 8 pixels per text size unit for height, plus 4 pixels padding
     list.item_render_height = (8 * list.item_text_size) + 4;
@@ -69,7 +72,7 @@ void drawScrollableList(CustomCanvas& canvas, ScrollableList& list, bool is_acti
         
         // Highlight selected item only if the list is active
         if (is_active && current_item_index == *list.selected_index_ptr) {
-            canvas.fillRect(list.x, yPos, list.width, list.item_render_height, COLOR_LIST_ITEM_SELECTED_BG);
+            canvas.fillRect(list.x, yPos, list.width, list.item_render_height, list.selected_bg_color);
             canvas.setTextColor(COLOR_LIST_ITEM_SELECTED_TEXT);
         } else {
             canvas.setTextColor(COLOR_LIST_ITEM_TEXT);

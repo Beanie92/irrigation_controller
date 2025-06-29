@@ -50,7 +50,7 @@ const char index_html[] PROGMEM = R"rawliteral(
       font-size: 1.5em;
       margin-top: 10px;
     }
-    h1, h2 { color: #0056b3; }
+    h1, h2 { color: #4f8cb6; }
     .section { margin-bottom: 20px; padding: 15px; padding-top: 0px; border: 1px solid #ddd; border-radius: 4px; }
     label { display: block; margin-bottom: 5px; font-weight: bold; }
     .form-row label { display: inline-block; margin-right: 10px; margin-bottom: 0; flex-shrink: 0; width: 150px; text-align: right; }
@@ -64,12 +64,12 @@ const char index_html[] PROGMEM = R"rawliteral(
     }
     .form-row input, .form-row select { width: auto; flex-grow: 1; margin-bottom: 0; }
     button {
-      background-color: #007bff; color: white; padding: 10px 15px; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; margin-right: 5px;
+      background-color: #6dbcc0; color: white; padding: 10px 15px; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; margin-right: 5px;
     }
-    button:hover { background-color: #0056b3; }
-    .btn-stop { background-color: #dc3545; }
+    button:hover { background-color: #4f8cb6; }
+    .btn-stop { background-color:#dc3545; }
     .btn-stop:hover { background-color: #c82333; }
-    .status { padding: 10px;  background-color: #e9ecef; border-radius: 4px; margin-bottom:15px; }
+    .status { padding: 10px;  background-color: #e9f4ef; border-radius: 4px; margin-bottom:15px; }
     .status strong { display: block; margin-bottom: 10px; }
     .zone-status { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
     .form-row { display: flex; align-items: center; margin-bottom: 10px; }
@@ -83,7 +83,7 @@ const char index_html[] PROGMEM = R"rawliteral(
       justify-content: center; 
       align-items: center; 
     }
-    .zone.active { background-color: #28a745; color: white; }
+    .zone.active { background-color: #7eb659; color: white; }
     .cycle-config { margin-bottom: 15px; }
     summary {
       cursor: pointer;
@@ -107,7 +107,7 @@ const char index_html[] PROGMEM = R"rawliteral(
     padding-bottom: 5px;
     }
     .days button { padding: 5px 8px; margin: 2px; background-color: #6c757d; flex-grow: 1; text-align: center; width: 40px; }
-    .days button.active { background-color: #28a745; }
+    .days button.active { background-color: #7eb659; }
     #message { 
       position: fixed;
       top: 0;
@@ -120,7 +120,7 @@ const char index_html[] PROGMEM = R"rawliteral(
       text-align: center;
       box-shadow: 0 2px 5px rgba(0,0,0,0.2);
     }
-    .success { background-color: #d4edda; color: #155724; border-bottom: 1px solid #c3e6cb; }
+    .success { background-color: #d4edda; color: #7eb659; border-bottom: 1px solid #c3e6cb; }
     .error { background-color: #f8d7da; color: #721c24; border-bottom: 1px solid #f5c6cb; }
 
   </style>
@@ -461,7 +461,7 @@ const char index_html[] PROGMEM = R"rawliteral(
           input.type = 'text';
           input.id = `zoneName_${index}`;
           input.value = name;
-          input.maxLength = 31;
+          input.maxLength = 16;
           itemDiv.appendChild(input);
           
           container.appendChild(itemDiv);
@@ -478,8 +478,8 @@ const char index_html[] PROGMEM = R"rawliteral(
     for (let i = 0; i < ${ZONE_COUNT}; i++) {
       const nameEl = document.getElementById(`zoneName_${i}`);
       const name = nameEl.value.trim();
-      if (name.length === 0 || name.length > 31) {
-        showMessage(`Zone ${i+1} name must be between 1 and 31 characters.`, 'error');
+      if (name.length === 0 || name.length > 16) {
+        showMessage(`Zone ${i+1} name must be between 1 and 16 characters.`, 'error');
         nameEl.focus();
         return;
       }

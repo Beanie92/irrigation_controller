@@ -172,7 +172,7 @@ const char* zoneNamePointers[ZONE_COUNT]; // Array of pointers for scrollable li
 char cycleZoneDisplayStrings[ZONE_COUNT][50];
 const char* cycleZoneDisplayPointers[ZONE_COUNT];
 int selectedCycleZoneIndex = 0; // Used by all program config screens
-bool editingCycleZone = false; // Are we editing a zone duration?
+bool editingCycleField = false; // Are we editing a field in the cycle config?
 
 // -----------------------------------------------------------------------------
 //                           Zone Timer Variables
@@ -981,7 +981,7 @@ void navigateTo(UIState newState, bool isNavigatingBack) {
     case STATE_PROG_C:
       {
         cycleEditFieldIndex = 0;
-        editingCycleZone = false;
+        editingCycleField = false;
         selectedCycleZoneIndex = 0;
 
         CycleConfig* currentProg;
@@ -1037,6 +1037,11 @@ void drawMainMenu() {
   canvas.fillScreen(COLOR_BACKGROUND);
   drawHeader(canvas, LEFT_PADDING, 10, currentDateTime, getCurrentDayOfWeek(), wifi_manager_get_ip());
   drawScrollableList(canvas, mainMenuScrollList, true);
+
+  // Draw the logo in the bottom right corner
+  int16_t logo_x = SCREEN_WIDTH - LOGO_WIDTH - 5;
+  int16_t logo_y = SCREEN_HEIGHT - LOGO_HEIGHT - 5;
+  canvas.drawRGBBitmap(logo_x, logo_y, logo_data, LOGO_WIDTH, LOGO_HEIGHT);
 }
 
 // -----------------------------------------------------------------------------
@@ -1254,21 +1259,29 @@ char setTimeDisplayStrings[7][32];
 const char* setTimeDisplayPointers[7];
 
 void drawSetSystemTimeMenu() {
-  drawHeader(canvas, LEFT_PADDING, 10, currentDateTime, getCurrentDayOfWeek(), wifi_manager_get_ip());
-  sprintf(setTimeDisplayStrings[0], "Year  : %d", currentDateTime.year);
-  sprintf(setTimeDisplayStrings[1], "Month : %d", currentDateTime.month);
-  sprintf(setTimeDisplayStrings[2], "Day   : %d", currentDateTime.day);
-  sprintf(setTimeDisplayStrings[3], "Hour  : %d", currentDateTime.hour);
-  sprintf(setTimeDisplayStrings[4], "Minute: %d", currentDateTime.minute);
-  sprintf(setTimeDisplayStrings[5], "Second: %d", currentDateTime.second);
-  sprintf(setTimeDisplayStrings[6], "Back to Settings");
+    drawHeader(canvas, LEFT_PADDING, 10, currentDateTime, getCurrentDayOfWeek(), wifi_manager_get_ip());
+    
+    // Set the background color based on editing state
+    if (editingTimeField) {
+        setTimeScrollList.selected_bg_color = COLOR_LIST_ITEM_EDITING_BG;
+    } else {
+        setTimeScrollList.selected_bg_color = COLOR_LIST_ITEM_SELECTED_BG;
+    }
 
-  for (int i = 0; i < 7; i++) {
-    setTimeDisplayPointers[i] = setTimeDisplayStrings[i];
-  }
-  setTimeScrollList.items = setTimeDisplayPointers;
+    sprintf(setTimeDisplayStrings[0], "Year  : %d", currentDateTime.year);
+    sprintf(setTimeDisplayStrings[1], "Month : %d", currentDateTime.month);
+    sprintf(setTimeDisplayStrings[2], "Day   : %d", currentDateTime.day);
+    sprintf(setTimeDisplayStrings[3], "Hour  : %d", currentDateTime.hour);
+    sprintf(setTimeDisplayStrings[4], "Minute: %d", currentDateTime.minute);
+    sprintf(setTimeDisplayStrings[5], "Second: %d", currentDateTime.second);
+    sprintf(setTimeDisplayStrings[6], "Back to Settings");
 
-  drawScrollableList(canvas, setTimeScrollList, true);
+    for (int i = 0; i < 7; i++) {
+        setTimeDisplayPointers[i] = setTimeDisplayStrings[i];
+    }
+    setTimeScrollList.items = setTimeDisplayPointers;
+
+    drawScrollableList(canvas, setTimeScrollList, true);
 }
 
 void handleSetSystemTimeEncoder(long diff) {
@@ -1339,7 +1352,7 @@ void drawCycleConfigMenu(const char* label, CycleConfig& cfg) {
 
   // Update the display strings for the zone list before drawing
   for (int i = 0; i < ZONE_COUNT; i++) {
-    sprintf(cycleZoneDisplayStrings[i], "%s: %d min", systemConfig.zoneNames[i], cfg.zoneDurations[i]);
+    sprintf(cycleZoneDisplayStrings[i], "%-16s: %3d min", systemConfig.zoneNames[i], cfg.zoneDurations[i]);
   }
 
   canvas.setTextSize(2);
@@ -1347,106 +1360,146 @@ void drawCycleConfigMenu(const char* label, CycleConfig& cfg) {
   canvas.setCursor(LEFT_PADDING, HEADER_HEIGHT + 10);
   canvas.print(label);
   canvas.print(" Configuration");
-
-  canvas.setTextSize(2);
-  uint16_t color;
-
-  color = (cycleEditFieldIndex == 0) ? COLOR_TEXT_PRIMARY : COLOR_TEXT_SECONDARY;
-  canvas.setTextColor(color);
-  canvas.setNewLine();
-  canvas.printf("Enabled: %s", cfg.enabled ? "YES" : "NO");
-
-  color = (cycleEditFieldIndex >= 1 && cycleEditFieldIndex <= 2) ? COLOR_TEXT_PRIMARY : COLOR_TEXT_SECONDARY;
-  canvas.setTextColor(color);
-  canvas.setNewLine();
-  canvas.printf("Start Time: %02d:%02d", cfg.startTime.hour, cfg.startTime.minute);
-
-  color = (cycleEditFieldIndex == 3) ? COLOR_TEXT_PRIMARY : COLOR_TEXT_SECONDARY;
-  canvas.setTextColor(color);
-  canvas.setNewLine();
-  canvas.printf("Inter-Zone Delay: %d min", cfg.interZoneDelay);
-
   canvas.setNewLine();
   canvas.setTextSize(2);
+  
+  uint16_t select_color = editingCycleField ? COLOR_LIST_ITEM_EDITING_BG : COLOR_LIST_ITEM_SELECTED_BG;
+
+  // --- Enabled ---
+  if (cycleEditFieldIndex == 0) {
+    canvas.fillRect(0, canvas.getCursorY() - CYCLE_CONFIG_X_PADDING, SCREEN_WIDTH, CYCLE_CONFIG_ITEM_HEIGHT, select_color);
+    canvas.setTextColor(COLOR_LIST_ITEM_SELECTED_TEXT);
+  } else {
+    canvas.setTextColor(COLOR_TEXT_PRIMARY);
+  }
+  canvas.print("Enabled:");
+  canvas.setCursor(VALUE_X_POS, canvas.getCursorY());
+  canvas.print(cfg.enabled ? "YES" : "NO");
+
+  // --- Start Time ---
+  canvas.setNewLine();
+  if (cycleEditFieldIndex >= 1 && cycleEditFieldIndex <= 2) {
+    canvas.fillRect(0, canvas.getCursorY() - CYCLE_CONFIG_X_PADDING, SCREEN_WIDTH, CYCLE_CONFIG_ITEM_HEIGHT, select_color);
+    canvas.setTextColor(COLOR_LIST_ITEM_SELECTED_TEXT);
+  } else {
+    canvas.setTextColor(COLOR_TEXT_PRIMARY);
+  }
+  canvas.print("Start Time:");
+  canvas.setCursor(VALUE_X_POS, canvas.getCursorY());
+  canvas.printf("%02d:%02d", cfg.startTime.hour, cfg.startTime.minute);
+
+  // --- Inter-Zone Delay ---
+  canvas.setNewLine();
+  if (cycleEditFieldIndex == 3) {
+    canvas.fillRect(0, canvas.getCursorY() - CYCLE_CONFIG_X_PADDING, SCREEN_WIDTH, CYCLE_CONFIG_ITEM_HEIGHT, select_color);
+    canvas.setTextColor(COLOR_LIST_ITEM_SELECTED_TEXT);
+  } else {
+    canvas.setTextColor(COLOR_TEXT_PRIMARY);
+  }
+  canvas.print("Inter-Zone Delay:");
+  canvas.setCursor(VALUE_X_POS, canvas.getCursorY());
+  canvas.printf("%d min", cfg.interZoneDelay);
+
+  // --- Days Active ---
+  canvas.setNewLine();
   canvas.setTextColor(COLOR_ACCENT_SECONDARY);
   canvas.print("Days Active:");
+  
   canvas.setNewLine();
-  int yPos = canvas.getCursorY();
   const char* dayLabels[] = {"Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"};
-  for (int i = 0; i < 7; i++) {
-    int xPos = LEFT_PADDING + i * 45;
-    color = (cycleEditFieldIndex == (4 + i)) ? COLOR_TEXT_PRIMARY : COLOR_TEXT_SECONDARY;
-    canvas.setTextColor(color);
-    canvas.setCursor(xPos, yPos);
+  for (int i = 0; i < CYCLE_CONFIG_DAYS_PER_ROW; i++) {
+    int xPos = LEFT_PADDING + i * CYCLE_CONFIG_DAY_X_SPACING;
+    
+    if (cycleEditFieldIndex == (4 + i)) {
+      // Highlight the background of the selected day
+      canvas.fillRect(xPos - CYCLE_CONFIG_X_PADDING, canvas.getCursorY() - CYCLE_CONFIG_X_PADDING, CYCLE_CONFIG_DAY_WIDTH, CYCLE_CONFIG_ITEM_HEIGHT, select_color);
+      canvas.setTextColor(COLOR_LIST_ITEM_SELECTED_TEXT);
+    } else {
+      canvas.setTextColor(COLOR_TEXT_PRIMARY);
+    }
+    canvas.setCursor(xPos, canvas.getCursorY());
     canvas.printf("%s%c", dayLabels[i], (cfg.daysActive & (1 << i)) ? '*' : ' ');
   }
+  
+  // Reset text color for the list below
+  canvas.setTextColor(COLOR_TEXT_PRIMARY);
 
   bool is_zone_list_active = (cycleEditFieldIndex >= 11);
+  if (editingCycleField) {
+    cycleZonesScrollList.selected_bg_color = COLOR_LIST_ITEM_EDITING_BG;
+  } else {
+    cycleZonesScrollList.selected_bg_color = COLOR_LIST_ITEM_SELECTED_BG;
+  }
   drawScrollableList(canvas, cycleZonesScrollList, is_zone_list_active);
 }
 
 void handleCycleEditEncoder(long diff, CycleConfig &cfg, const char* progLabel) {
-  if (cycleEditFieldIndex == 11 && editingCycleZone) {
-    int selected_zone_index = *cycleZonesScrollList.selected_index_ptr;
-    if (selected_zone_index < cycleZonesScrollList.num_items) {
-      int newDur = cfg.zoneDurations[selected_zone_index] + diff;
-      if (newDur < 0)   newDur = 120;
-      if (newDur > 120) newDur = 0;
-      cfg.zoneDurations[selected_zone_index] = newDur;
+  if (editingCycleField) {
+    // In edit mode, so modify the value
+    if (cycleEditFieldIndex == 11) { // Editing zone durations list
+      int selected_zone_index = *cycleZonesScrollList.selected_index_ptr;
+      if (selected_zone_index < cycleZonesScrollList.num_items) {
+        int newDur = cfg.zoneDurations[selected_zone_index] + diff;
+        if (newDur < 0)   newDur = 120;
+        if (newDur > 120) newDur = 0;
+        cfg.zoneDurations[selected_zone_index] = newDur;
+      }
+    } else { // Editing one of the top fields
+      switch (cycleEditFieldIndex) {
+        case 0: // Enabled
+          if (diff != 0) cfg.enabled = !cfg.enabled;
+          break;
+        case 1: // Hour
+          cfg.startTime.hour = (cfg.startTime.hour + diff + 24) % 24;
+          break;
+        case 2: // Minute
+          cfg.startTime.minute = (cfg.startTime.minute + diff + 60) % 60;
+          break;
+        case 3: // Delay
+          cfg.interZoneDelay += diff;
+          if (cfg.interZoneDelay < 0)  cfg.interZoneDelay = 60;
+          if (cfg.interZoneDelay > 60) cfg.interZoneDelay = 0;
+          break;
+        // For days, editing is done with the button press, so encoder does nothing here
+        case 4: case 5: case 6: case 7: case 8: case 9: case 10:
+          break;
+      }
     }
-  } else if (cycleEditFieldIndex == 11) {
-    handleScrollableListInput(cycleZonesScrollList, diff);
-  }
-  else {
-    switch (cycleEditFieldIndex) {
-      case 0:
-        if (diff != 0) cfg.enabled = !cfg.enabled;
-        break;
-      case 1:
-        cfg.startTime.hour = (cfg.startTime.hour + diff + 24) % 24;
-        break;
-      case 2:
-        cfg.startTime.minute = (cfg.startTime.minute + diff + 60) % 60;
-        break;
-      case 3:
-        cfg.interZoneDelay += diff;
-        if (cfg.interZoneDelay < 0)  cfg.interZoneDelay = 30;
-        if (cfg.interZoneDelay > 30) cfg.interZoneDelay = 0;
-        break;
-      case 4: case 5: case 6: case 7: case 8: case 9: case 10:
-        {
-          uint8_t dayBit = (1 << (cycleEditFieldIndex - 4));
-          if (diff != 0) {
-            cfg.daysActive ^= dayBit;
-          }
-        }
-        break;
+  } else {
+    // Not in edit mode, so navigate between fields
+    if (cycleEditFieldIndex == 11) {
+      handleScrollableListInput(cycleZonesScrollList, diff);
+    } else {
+      int num_fields = 11 + 1; // 11 top fields + the zone list
+      cycleEditFieldIndex += (diff > 0) ? 1 : -1;
+      if (cycleEditFieldIndex < 0) cycleEditFieldIndex = num_fields - 1;
+      if (cycleEditFieldIndex >= num_fields) cycleEditFieldIndex = 0;
     }
   }
-  
   uiDirty = true;
 }
 
 void handleCycleEditButton(CycleConfig &cfg, UIState thisState, const char* progLabel) {
-  if (cycleEditFieldIndex == 11) {
-    int selected_zone_index = *cycleZonesScrollList.selected_index_ptr;
-
-    if (selected_zone_index == cycleZonesScrollList.num_items) {
-      cycleEditFieldIndex = 0;
-      editingCycleZone = false;
-      saveConfig(); // Save changes when exiting
-      goBack();
-      return;
-    }
-
-    editingCycleZone = !editingCycleZone;
-
-  } else {
-    cycleEditFieldIndex++;
+  // Special case for the back button in the zone list
+  if (cycleEditFieldIndex == 11 && *cycleZonesScrollList.selected_index_ptr == cycleZonesScrollList.num_items) {
+    editingCycleField = false;
+    saveConfig();
+    goBack();
+    return;
   }
-  
-  if (cycleEditFieldIndex > 10) {
-    cycleEditFieldIndex = 11;
+
+  // Special handling for day toggling
+  if (cycleEditFieldIndex >= 4 && cycleEditFieldIndex <= 10) {
+    uint8_t dayBit = (1 << (cycleEditFieldIndex - 4));
+    cfg.daysActive ^= dayBit; // Toggle the day directly
+  } else {
+    // For all other fields, toggle edit mode
+    editingCycleField = !editingCycleField;
+  }
+
+  // If we are leaving edit mode, save the configuration
+  if (!editingCycleField) {
+    saveConfig();
   }
   
   uiDirty = true;
@@ -1736,20 +1789,19 @@ void startTestMode() {
   DEBUG_PRINTLN("=== STARTING TEST MODE ===");
   
   testModeActive = true;
-  currentTestRelay = 0;
+  currentTestRelay = 1; // Start with Zone 1
   testModeStartTime = millis();
   
   stopAllActivity();
   
-  DEBUG_PRINTF("Turning on relay %d (%s)\n", currentTestRelay, currentTestRelay == 0 ? "Pump" : systemConfig.zoneNames[currentTestRelay-1]);
-  // In test mode, we are intentionally testing relays individually.
-  // The main loop safety check will prevent the pump from running alone if test mode is exited unexpectedly.
+  DEBUG_PRINTF("Testing Zone %d. Turning on relay %d and pump.\n", currentTestRelay, currentTestRelay);
   relayStates[currentTestRelay] = true;
   digitalWrite(relayPins[currentTestRelay], HIGH);
+  setPumpState(true); // This will turn on the pump because a zone is active
   
   uiDirty = true;
   
-  DEBUG_PRINTLN("Test mode initialized - pump is now ON");
+  DEBUG_PRINTLN("Test mode initialized - Zone 1 and pump are now ON");
 }
 
 void updateTestMode() {
@@ -1759,24 +1811,28 @@ void updateTestMode() {
   unsigned long elapsed = currentTime - testModeStartTime;
   
   if (elapsed >= TEST_INTERVAL) {
+    // Turn off the current zone and the pump
     if (currentTestRelay < NUM_RELAYS) {
-      DEBUG_PRINTF("Turning off relay %d (%s)\n", currentTestRelay, currentTestRelay == 0 ? "Pump" : systemConfig.zoneNames[currentTestRelay-1]);
+      DEBUG_PRINTF("Turning off Zone %d (relay %d).\n", currentTestRelay, currentTestRelay);
       relayStates[currentTestRelay] = false;
       digitalWrite(relayPins[currentTestRelay], LOW);
+      setPumpState(false);
     }
     
     currentTestRelay++;
     
-    if (currentTestRelay >= NUM_RELAYS) {
-      DEBUG_PRINTLN("Test mode complete - all relays tested");
+    if (currentTestRelay >= NUM_RELAYS) { // All zones tested
+      DEBUG_PRINTLN("Test mode complete - all zones tested");
       stopTestMode();
       navigateTo(STATE_MAIN_MENU);
       return;
     }
     
-    DEBUG_PRINTF("Turning on relay %d (%s)\n", currentTestRelay, currentTestRelay == 0 ? "Pump" : systemConfig.zoneNames[currentTestRelay-1]);
+    // Turn on the next zone and the pump
+    DEBUG_PRINTF("Testing Zone %d. Turning on relay %d and pump.\n", currentTestRelay, currentTestRelay);
     relayStates[currentTestRelay] = true;
     digitalWrite(relayPins[currentTestRelay], HIGH);
+    setPumpState(true);
     
     testModeStartTime = currentTime;
     
@@ -1797,8 +1853,8 @@ void drawTestModeMenu() {
   canvas.setTextColor(COLOR_TEXT_PRIMARY);
   canvas.setNewLine();
   
-  if (currentTestRelay < NUM_RELAYS) {
-    canvas.printf("Testing: %s", currentTestRelay == 0 ? "Pump" : systemConfig.zoneNames[currentTestRelay-1]);
+  if (currentTestRelay > 0 && currentTestRelay < NUM_RELAYS) {
+    canvas.printf("Testing: %s", systemConfig.zoneNames[currentTestRelay-1]);
     
     unsigned long elapsed = millis() - testModeStartTime;
     unsigned long remaining = (TEST_INTERVAL - elapsed) / 1000;
@@ -1809,7 +1865,7 @@ void drawTestModeMenu() {
     
     canvas.setNewLine();
     canvas.setTextColor(COLOR_ACCENT_PRIMARY);
-    canvas.printf("Relay %d of %d", currentTestRelay + 1, NUM_RELAYS);
+    canvas.printf("Zone %d of %d", currentTestRelay, ZONE_COUNT);
   } else {
     canvas.print("Test Complete!");
   }
@@ -1821,9 +1877,7 @@ void drawTestModeMenu() {
   canvas.print("Relay Status:");
   
   for (int i = 0; i < NUM_RELAYS; i++) {
-      
-    
-    if (i == currentTestRelay && testModeActive) {
+    if ((i == currentTestRelay || i == PUMP_IDX) && testModeActive) {
       canvas.setTextColor(COLOR_SUCCESS);
     } else {
       canvas.setTextColor(COLOR_TEXT_SECONDARY);
