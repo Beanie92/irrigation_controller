@@ -18,11 +18,12 @@ An ESP32-C6 based irrigation controller with a web interface, manual controls, a
 
 ### Web Interface
 
-*(Placeholder for web interface screenshot)*
+![image](https://github.com/user-attachments/assets/95d74a90-c597-4952-88c8-14035d9b3d4a)
+
 
 ### On-Device UI
 
-*(Placeholder for on-device UI screenshot)*
+![Screenshot from 2025-06-29 21-27-22](https://github.com/user-attachments/assets/f2cf33d0-eba3-4ca9-87fd-d835c4b20bc7)
 
 
 ## Hardware
