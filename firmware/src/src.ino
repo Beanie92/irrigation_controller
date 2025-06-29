@@ -304,6 +304,44 @@ void updateTestMode();
 void drawTestModeMenu();
 void stopTestMode();
 
+// -----------------------------------------------------------------------------
+//                              RELAY CONTROL
+// -----------------------------------------------------------------------------
+bool isAnyZoneActive() {
+  for (int i = 1; i < NUM_RELAYS; i++) {
+    if (relayStates[i]) {
+      return true;
+    }
+  }
+  return false;
+}
+
+void setPumpState(bool on) {
+  if (on) {
+    // Only turn the pump on if at least one zone is active.
+    if (isAnyZoneActive()) {
+      if (!relayStates[PUMP_IDX]) {
+        DEBUG_PRINTF("Activating pump relay (pin %d)\n", relayPins[PUMP_IDX]);
+        relayStates[PUMP_IDX] = true;
+        digitalWrite(relayPins[PUMP_IDX], HIGH);
+      }
+    } else {
+      DEBUG_PRINTLN("PUMP SAFETY: Pump activation prevented. No zones are active.");
+      // Ensure pump is off if we get here, just in case.
+      if (relayStates[PUMP_IDX]) {
+        relayStates[PUMP_IDX] = false;
+        digitalWrite(relayPins[PUMP_IDX], LOW);
+      }
+    }
+  } else {
+    // Turn the pump off.
+    if (relayStates[PUMP_IDX]) {
+      DEBUG_PRINTF("Deactivating pump on pin %d\n", relayPins[PUMP_IDX]);
+      relayStates[PUMP_IDX] = false;
+      digitalWrite(relayPins[PUMP_IDX], LOW);
+    }
+  }
+}
 
 
 // -----------------------------------------------------------------------------
@@ -426,6 +464,15 @@ void render() {
 //                                     LOOP
 // -----------------------------------------------------------------------------
 void loop() {
+  // --------------------- SAFETY CHECK ---------------------
+  // Ensure the pump is never running if no zones are active.
+  // This is a failsafe in case of a logic error elsewhere.
+  if (relayStates[PUMP_IDX] && !isAnyZoneActive()) {
+    DEBUG_PRINTLN("!!! PUMP SAFETY ALERT !!! Pump was on without an active zone. Forcing OFF.");
+    setPumpState(false);
+  }
+  // --------------------------------------------------------
+
   // Handle WiFi and NTP updates
   wifi_manager_handle();
   
@@ -954,7 +1001,7 @@ void navigateTo(UIState newState, bool isNavigatingBack) {
         cycleZonesScrollList.num_items = ZONE_COUNT;
         cycleZonesScrollList.selected_index_ptr = &selectedCycleZoneIndex;
         cycleZonesScrollList.x = 0;
-        cycleZonesScrollList.y = 150;
+        cycleZonesScrollList.y = 160;
         cycleZonesScrollList.width = 320;
         cycleZonesScrollList.height = 95;
         cycleZonesScrollList.item_text_size = 2;
@@ -1098,9 +1145,8 @@ void startManualZone(int zoneIdx) {
   relayStates[zoneIdx] = true;
   digitalWrite(relayPins[zoneIdx], HIGH);
 
-  DEBUG_PRINTF("Activating pump relay (pin %d)\n", relayPins[PUMP_IDX]);
-  relayStates[PUMP_IDX] = true;
-  digitalWrite(relayPins[PUMP_IDX], HIGH);
+  // Use the new centralized function to control the pump
+  setPumpState(true);
 
   currentRunningZone = zoneIdx;
   zoneStartTime = millis();
@@ -1182,11 +1228,8 @@ void stopAllActivity() {
     digitalWrite(relayPins[i], LOW);
   }
   
-  if (relayStates[PUMP_IDX]) {
-    DEBUG_PRINTF("Deactivating pump on pin %d\n", relayPins[PUMP_IDX]);
-  }
-  relayStates[PUMP_IDX] = false;
-  digitalWrite(relayPins[PUMP_IDX], LOW);
+  // Now that all zones are off, turn off the pump.
+  setPumpState(false);
   
   currentRunningZone = -1;
   zoneStartTime = 0;
@@ -1303,47 +1346,43 @@ void drawCycleConfigMenu(const char* label, CycleConfig& cfg) {
   canvas.setTextColor(COLOR_ACCENT_SECONDARY);
   canvas.setCursor(LEFT_PADDING, HEADER_HEIGHT + 10);
   canvas.print(label);
-  canvas.println(" Configuration");
+  canvas.print(" Configuration");
 
   canvas.setTextSize(2);
   uint16_t color;
 
   color = (cycleEditFieldIndex == 0) ? COLOR_TEXT_PRIMARY : COLOR_TEXT_SECONDARY;
   canvas.setTextColor(color);
-  canvas.setCursor(LEFT_PADDING, HEADER_HEIGHT + 40);
+  canvas.setNewLine();
   canvas.printf("Enabled: %s", cfg.enabled ? "YES" : "NO");
 
   color = (cycleEditFieldIndex >= 1 && cycleEditFieldIndex <= 2) ? COLOR_TEXT_PRIMARY : COLOR_TEXT_SECONDARY;
   canvas.setTextColor(color);
-  canvas.setCursor(LEFT_PADDING, HEADER_HEIGHT + 65);
+  canvas.setNewLine();
   canvas.printf("Start Time: %02d:%02d", cfg.startTime.hour, cfg.startTime.minute);
 
   color = (cycleEditFieldIndex == 3) ? COLOR_TEXT_PRIMARY : COLOR_TEXT_SECONDARY;
   canvas.setTextColor(color);
-  canvas.setCursor(LEFT_PADDING, HEADER_HEIGHT + 90);
+  canvas.setNewLine();
   canvas.printf("Inter-Zone Delay: %d min", cfg.interZoneDelay);
 
-  canvas.setTextSize(1);
-  canvas.setCursor(LEFT_PADDING, HEADER_HEIGHT + 115);
+  canvas.setNewLine();
+  canvas.setTextSize(2);
   canvas.setTextColor(COLOR_ACCENT_SECONDARY);
-  canvas.println("Days Active:");
+  canvas.print("Days Active:");
+  canvas.setNewLine();
+  int yPos = canvas.getCursorY();
   const char* dayLabels[] = {"Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"};
   for (int i = 0; i < 7; i++) {
     int xPos = LEFT_PADDING + i * 45;
     color = (cycleEditFieldIndex == (4 + i)) ? COLOR_TEXT_PRIMARY : COLOR_TEXT_SECONDARY;
     canvas.setTextColor(color);
-    canvas.setCursor(xPos, HEADER_HEIGHT + 130);
-    canvas.printf("%s %c", dayLabels[i], (cfg.daysActive & (1 << i)) ? '*' : ' ');
+    canvas.setCursor(xPos, yPos);
+    canvas.printf("%s%c", dayLabels[i], (cfg.daysActive & (1 << i)) ? '*' : ' ');
   }
 
   bool is_zone_list_active = (cycleEditFieldIndex >= 11);
   drawScrollableList(canvas, cycleZonesScrollList, is_zone_list_active);
-
-  canvas.setTextSize(1);
-  canvas.setTextColor(COLOR_TEXT_PRIMARY);
-  canvas.setCursor(LEFT_PADDING, 290);
-  canvas.println("Rotate to change, Press to select next.");
-  canvas.println("Long press to exit.");
 }
 
 void handleCycleEditEncoder(long diff, CycleConfig &cfg, const char* progLabel) {
@@ -1448,13 +1487,15 @@ void updateCycleRun() {
       int zoneToRun = currentCycleZoneIndex + 1;
       unsigned long zoneRunDuration = (unsigned long)cfg->zoneDurations[currentCycleZoneIndex] * 60000;
 
-      if (!relayStates[zoneToRun] || !relayStates[PUMP_IDX]) {
-
+      if (!relayStates[zoneToRun]) {
+        // A zone is not running, so let's start it.
         DEBUG_PRINTF("Activating cycle zone %d (%s) and pump\n", zoneToRun, systemConfig.zoneNames[zoneToRun-1]);
         relayStates[zoneToRun] = true;
         digitalWrite(relayPins[zoneToRun], HIGH);
-        relayStates[PUMP_IDX] = true;
-        digitalWrite(relayPins[PUMP_IDX], HIGH);
+        
+        // Now that a zone is on, activate the pump.
+        setPumpState(true);
+        
         cycleZoneStartTime = currentTime;
       }
 
@@ -1466,8 +1507,7 @@ void updateCycleRun() {
         
         // If there's a delay, turn off the pump.
         if (cfg->interZoneDelay > 0) {
-            relayStates[PUMP_IDX] = false;
-            digitalWrite(relayPins[PUMP_IDX], LOW);
+            setPumpState(false);
             DEBUG_PRINTLN("Pump turned OFF for inter-zone delay.");
         }
         
@@ -1702,6 +1742,8 @@ void startTestMode() {
   stopAllActivity();
   
   DEBUG_PRINTF("Turning on relay %d (%s)\n", currentTestRelay, currentTestRelay == 0 ? "Pump" : systemConfig.zoneNames[currentTestRelay-1]);
+  // In test mode, we are intentionally testing relays individually.
+  // The main loop safety check will prevent the pump from running alone if test mode is exited unexpectedly.
   relayStates[currentTestRelay] = true;
   digitalWrite(relayPins[currentTestRelay], HIGH);
   
