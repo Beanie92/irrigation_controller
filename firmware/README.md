@@ -11,6 +11,7 @@ ESP32-C6 based irrigation controller with WiFi connectivity and NTP time synchro
 - **Cycle Scheduling**: Three programmable irrigation schedules (A, B, C) configurable via device UI or web UI.
 - **TFT Display**: 240x320 color display with intuitive menu system.
 - **Relay Control**: 8-channel relay control (1 pump + 7 zones).
+- **Fully Offline Mode**: Operates completely without a WiFi connection, with all features accessible via the device interface.
 
 ## Hardware Requirements
 
@@ -141,6 +142,16 @@ Each cycle (A, B, C) can be configured with:
 - **Inter-zone Delay**: Pause between zones (0-30 minutes)
 - **Start Time**: When the cycle should begin
 - **Active Days**: Which days of the week to run
+
+## Screenshots
+
+### On-Device UI
+
+*(Placeholder for on-device UI screenshot)*
+
+### Web Interface
+
+*(Placeholder for web interface screenshot)*
 
 ## Troubleshooting
 
