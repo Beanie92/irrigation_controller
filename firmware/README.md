@@ -166,14 +166,12 @@ Each cycle (A, B, C) can be configured with:
 ### Arduino IDE Setup
 1. Install ESP32 board package
 2. Select "ESP32C6 Dev Module" as board
-3. Install required libraries:
-   - **DFRobot_GDL** (for display) - Note: This project now uses a custom `st7789_dma_driver` instead of DFRobot_GDL. Ensure `Adafruit_GFX` is available as a dependency if not already included by the ESP32 core.
-   - **WiFiManager** by tzapu - Install via Library Manager.
-   - **WebServer** (built-in ESP32 library, part of the ESP32 core - no separate installation needed if ESP32 core is installed).
-   - **ArduinoJson** - Install via Library Manager (by Benoit Blanchon).
-   - **WiFi** (built-in ESP32 library)
-   - **Preferences** (built-in ESP32 library)
-   - **time.h** (built-in C library)
+3. Install required libraries via the Arduino Library Manager:
+   - **Adafruit GFX Library**: A dependency for the display driver.
+   - **ArduinoJson**: Used for handling JSON data for configuration.
+   - **ESPAsyncWebServer**: Powers the web interface.
+   - **LittleFS**: For file system storage.
+   - **WiFiManager** by tzapu: For easy WiFi configuration.
 
 ### Serial Debug Output
 Enable debug output by setting:
