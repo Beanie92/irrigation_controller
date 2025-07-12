@@ -32,6 +32,7 @@ extern unsigned long cycleInterZoneDelayStartTime;
 extern int currentRunningZone;
 extern unsigned long zoneStartTime;
 extern unsigned long zoneDuration;
+extern int batteryLevel;
 
 
 // Web server functions

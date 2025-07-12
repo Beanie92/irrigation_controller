@@ -1,6 +1,8 @@
 #include "web_server.h"
 #include "config_manager.h"
 #include "logo_webp.h"
+#include "wifi_manager.h"
+#include "battery.h"
 #include <ESPAsyncWebServer.h>
 #include <ArduinoJson.h>
 
@@ -40,17 +42,53 @@ const char index_html[] PROGMEM = R"rawliteral(
       flex-direction: column;
       align-items: flex-start;
       margin-bottom: 0px;
+      position: relative; /* Needed for absolute positioning of status icons */
+      transition: all 0.1s ease; /* Smooth transition for changes */
     }
     .header-img { 
       max-width: 200px; 
       max-height: 200px; 
       object-fit: contain; 
+      transition: all 0.1s ease; /* Smooth transition for logo size */
     }
     h1 {
-      font-size: 1.5em;
-      margin-top: 10px;
+      font-size: 1.2em; /* Smaller font size */
+      margin-top: 5px; /* Less margin */
+      margin-bottom: 5px; /* Add bottom margin for spacing */
+      transition: all 0.1s ease; /* Smooth transition for tagline */
     }
     h1, h2 { color: #4f8cb6; }
+    
+    /* Sticky header styles */
+    .header.sticky {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      width: 100%;
+      background-color: #fff;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+      z-index: 999;
+      flex-direction: row;
+      align-items: center;
+      padding: 5px 20px;
+      justify-content: space-between;
+      box-sizing: border-box;
+    }
+    .header.sticky .header-img {
+      max-width: 75px; /* Smaller logo when sticky */
+      max-height: 75px;
+
+    }
+
+    .header.sticky h1 {
+      display: none; /* Hide tagline when sticky */
+    }
+    .header.sticky .status-icons {
+      position: static; /* Reset position for sticky header */
+      margin-left: auto; /* Push icons to the right */
+    }
+
     .section { margin-bottom: 20px; padding: 15px; padding-top: 0px; border: 1px solid #ddd; border-radius: 4px; }
     label { display: block; margin-bottom: 5px; font-weight: bold; }
     .form-row label { display: inline-block; margin-right: 10px; margin-bottom: 0; flex-shrink: 0; width: 150px; text-align: right; }
@@ -62,7 +100,7 @@ const char index_html[] PROGMEM = R"rawliteral(
       border-radius: 4px;
       box-sizing: border-box;
     }
-    .form-row input, .form-row select { width: auto; flex-grow: 1; margin-bottom: 0; }
+    .form-row input, .form-row select { width: auto; flex-grow: 1; margin-bottom: 0; max-width: 12em}
     button {
       background-color: #6dbcc0; color: white; padding: 10px 15px; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; margin-right: 5px;
     }
@@ -72,7 +110,7 @@ const char index_html[] PROGMEM = R"rawliteral(
     .status { padding: 10px;  background-color: #e9f4ef; border-radius: 4px; margin-bottom:15px; }
     .status strong { display: block; margin-bottom: 10px; }
     .zone-status { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
-    .form-row { display: flex; align-items: center; margin-bottom: 10px; }
+    .form-row { display: flex; align-items: center; margin-bottom: 10px; justify-content: center;}}
     .zone { 
       padding: 8px; 
       border: 1px solid #ccc; 
@@ -108,40 +146,106 @@ const char index_html[] PROGMEM = R"rawliteral(
     }
     .days button { padding: 5px 8px; margin: 2px; background-color: #6c757d; flex-grow: 1; text-align: center; width: 40px; }
     .days button.active { background-color: #7eb659; }
-    #message { 
+    #message {
       position: fixed;
-      top: 0;
+      bottom: -100px; /* Start off-screen */
       left: 0;
       right: 0;
-      padding: 10px; 
-      border-radius: 0;
-      margin-top: 0;
-      z-index: 1000;
+      padding: 10px;
+      z-index: 1001;
       text-align: center;
-      box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+      box-shadow: 0 -2px 5px rgba(0,0,0,0.2);
+      transition: bottom 0.5s;
+    }
+    #message.show {
+      bottom: 0;
     }
     .success { background-color: #d4edda; color: #7eb659; border-bottom: 1px solid #c3e6cb; }
     .error { background-color: #f8d7da; color: #721c24; border-bottom: 1px solid #f5c6cb; }
+    .status-icons { display: flex; gap: 10px; align-items: center; }
+    #statusDateTime { display: flex; justify-content: space-between; align-items: center; }
+    #wifi-icon, #battery-icon { font-size: 24px; }
+    #battery-icon {
+        width: 24px; height: 12px; border: 1px solid #ccc; border-radius: 2px;
+        position: relative;
+    }
+    #battery-icon::after {
+        content: ''; position: absolute; top: 2px; right: -5px;
+        width: 3px; height: 8px; background-color: #ccc;
+        border-radius: 0 1px 1px 0;
+    }
+    #battery-level {
+        height: 100%; background-color: #7eb659; border-radius: 1px;
+    }
+    #wifi-icon { display: flex; align-items: flex-end; gap: 2px; }
+    .wifi-bar { width: 4px; background-color: #ccc; border-radius: 1px; }
+    .progress-bar-container {
+      width: 100%;
+      background-color: #e0e0e0;
+      border-radius: 5px;
+      overflow: hidden;
+      margin-top: 10px;
+    }
+    .progress-bar {
+      height: 20px;
+      background-color: #4f8cb6;
+      width: 0%;
+      text-align: center;
+      line-height: 20px;
+      color: white;
+      font-size: 0.8em;
+      border-radius: 5px;
+      /* Barber pole effect */
+      background-size: 30px 30px;
+      background-image: linear-gradient(
+        -45deg, 
+        rgba(255, 255, 255, 0.1) 25%, 
+        transparent 25%, 
+        transparent 50%, 
+        rgba(255, 255, 255, 0.1) 50%, 
+        rgba(255, 255, 255, 0.1) 75%, 
+        transparent 75%, 
+        transparent
+      );
+      animation: move-stripes 2s linear infinite;
+    }
 
+    @keyframes move-stripes {
+      from { background-position: 0 0; }
+      to { background-position: 30px 0; }
+    }
   </style>
 </head>
 <body>
   <div class="container">
     <div class="header">
-      <img src="data:image/webp;base64,##FAVICON_BASE64##" class="header-img">
-      <h1>Irrigation Controller</h1>
+      <a href="https://github.com/Beanie92/irrigation_controller" target="_blank">
+        <img src="data:image/webp;base64,##FAVICON_BASE64##" class="header-img">
+      </a>
+      <h1>Smart Irrigation Controller</h1>
     </div>
 
     <div class="section">
       <h2>System Status</h2>
-      <div class="status" id="statusDateTime">Loading...</div>
-      <div class="status" id="runningStatus" style="display: none;"></div>
+      <div class="status" id="statusDateTime">
+        <span id="time-display">Loading...</span>
+        <div class="status-icons">
+          <div id="wifi-icon"></div>
+          <div id="battery-icon"></div>
+        </div>
+      </div>
+      <div class="status" id="runningStatus" style="display: none;">
+        <strong id="runningDescription"></strong>
+        <div class="progress-bar-container">
+          <div class="progress-bar" id="runningProgressBar"></div>
+        </div>
+        <span id="runningTimeInfo" style="font-size: 0.9em; display: block; text-align: left; margin-top: 5px;"></span>
+      </div>
       <div class="status">
-        <strong>Relay States:</strong>
         <div class="zone-status" id="statusRelays">Loading...</div>
       </div>
-      <label for="autoRefreshToggle" style="display: inline-block; margin-left: 10px;">
-        <input type="checkbox" id="autoRefreshToggle" onchange="toggleAutoRefresh(this.checked)" checked>
+      <label for="autoRefreshToggle" style="display: flex; align-items: center; margin-left: 10px;">
+        <input type="checkbox" id="autoRefreshToggle" onchange="toggleAutoRefresh(this.checked)" checked style="accent-color: #4f8cb6; margin-right: 5px;">
         Auto-Refresh
       </label>
     </div>
@@ -194,8 +298,10 @@ const char index_html[] PROGMEM = R"rawliteral(
   function showMessage(text, type) {
     const msgDiv = document.getElementById('message');
     msgDiv.textContent = text;
-    msgDiv.className = type; // 'success' or 'error'
-    setTimeout(() => { msgDiv.textContent = ''; msgDiv.className = ''; }, 5000);
+    msgDiv.className = type + ' show';
+    setTimeout(() => {
+      msgDiv.className = msgDiv.className.replace('show', '');
+    }, 4500);
   }
 
   function validateInput(element, min, max, name) {
@@ -213,19 +319,47 @@ const char index_html[] PROGMEM = R"rawliteral(
       .then(response => response.json())
       .then(data => {
         const dt = data.dateTime;
-        document.getElementById('statusDateTime').textContent = 
-          `Current Time: ${dt.year}-${String(dt.month).padStart(2,'0')}-${String(dt.day).padStart(2,'0')} ${String(dt.hour).padStart(2,'0')}:${String(dt.minute).padStart(2,'0')}:${String(dt.second).padStart(2,'0')} (${data.dayOfWeek})`;
+        document.getElementById('time-display').textContent = 
+          `${dt.year}-${String(dt.month).padStart(2,'0')}-${String(dt.day).padStart(2,'0')} ${String(dt.hour).padStart(2,'0')}:${String(dt.minute).padStart(2,'0')}:${String(dt.second).padStart(2,'0')} (${data.dayOfWeek})`;
         
+        updateBatteryIcon(data.batteryLevel);
+        updateWifiIcon(data.wifiRSSI);
+
         const runningStatusDiv = document.getElementById('runningStatus');
+        const runningDescription = document.getElementById('runningDescription');
+        const runningProgressBar = document.getElementById('runningProgressBar');
+        const runningTimeInfo = document.getElementById('runningTimeInfo');
+
         if (data.runningInfo.operation !== "OP_NONE") {
-          let html = `<strong>${data.runningInfo.description}</strong><br>`;
+          runningDescription.textContent = data.runningInfo.description;
+          
+          if (data.runningInfo.total_duration_s > 0) {
+            const progress = (data.runningInfo.elapsed_s / data.runningInfo.total_duration_s) * 100;
+            runningProgressBar.style.width = `${progress}%`;
+            runningProgressBar.textContent = `${Math.round(progress)}%`;
+            runningProgressBar.parentElement.style.display = 'block'; // Show container
+            
+            if (data.runningInfo.is_delay) {
+              runningProgressBar.style.backgroundColor = '#ffc107'; // Yellow for delay
+            } else {
+              runningProgressBar.style.backgroundColor = '#4f8cb6'; // Blue for regular zone
+            }
+
+          } else {
+            runningProgressBar.style.width = '0%';
+            runningProgressBar.textContent = '';
+            runningProgressBar.parentElement.style.display = 'none'; // Hide container if no duration
+          }
+
+          let timeInfoText = '';
           if (data.runningInfo.time_elapsed) {
-            html += `Time Elapsed: ${data.runningInfo.time_elapsed}<br>`;
+            timeInfoText += `Elapsed: ${data.runningInfo.time_elapsed}`;
           }
           if (data.runningInfo.time_remaining) {
-            html += `Time Remaining: ${data.runningInfo.time_remaining}`;
+            if (timeInfoText) timeInfoText += ' | ';
+            timeInfoText += `Remaining: ${data.runningInfo.time_remaining}`;
           }
-          runningStatusDiv.innerHTML = html;
+          runningTimeInfo.textContent = timeInfoText;
           runningStatusDiv.style.display = 'block';
         } else {
           runningStatusDiv.style.display = 'none';
@@ -515,41 +649,78 @@ const char index_html[] PROGMEM = R"rawliteral(
     toggleAutoRefresh(true);
   };
 
+  // Sticky header logic
+  window.addEventListener('scroll', () => {
+    const header = document.querySelector('.header');
+    const stickyThreshold = 50; // Adjust this value as needed
+
+    if (window.pageYOffset > stickyThreshold) {
+      header.classList.add('sticky');
+    } else {
+      header.classList.remove('sticky');
+    }
+  });
+
   function testClick() {
     fetch('/api/test')
       .then(response => response.text())
       .then(text => console.log(text));
   }
+
+  function updateBatteryIcon(level) {
+    const batteryIcon = document.getElementById('battery-icon');
+    batteryIcon.innerHTML = `<div id="battery-level" style="width: ${level}%;"></div>`;
+    const levelDiv = document.getElementById('battery-level');
+    if (level > 50) {
+      levelDiv.style.backgroundColor = '#7eb659';
+    } else if (level > 20) {
+      levelDiv.style.backgroundColor = '#ffc107';
+    } else {
+      levelDiv.style.backgroundColor = '#dc3545';
+    }
+  }
+
+  function updateWifiIcon(rssi) {
+    const wifiIcon = document.getElementById('wifi-icon');
+    wifiIcon.innerHTML = '';
+    let numBars = 0;
+    if (rssi >= -60) numBars = 4;
+    else if (rssi >= -70) numBars = 3;
+    else if (rssi >= -80) numBars = 2;
+    else if (rssi < -80 && rssi != 0) numBars = 1;
+
+    for (let i = 0; i < 4; i++) {
+      const bar = document.createElement('div');
+      bar.className = 'wifi-bar';
+      bar.style.height = `${(i + 1) * 4}px`;
+      if (i < numBars) {
+        if (numBars >= 3) {
+          bar.style.backgroundColor = '#7eb659';
+        } else if (numBars >= 2) {
+          bar.style.backgroundColor = '#ffc107';
+        } else {
+          bar.style.backgroundColor = '#dc3545';
+        }
+      }
+      wifiIcon.appendChild(bar);
+    }
+  }
 </script>
-</body>
-</html>
 )rawliteral";
 
-// Helper to convert DayOfWeek bitmask to string for JSON
-String dayOfWeekToString(uint8_t daysActive) {
-    String str = "";
-    if (daysActive & SUNDAY)    str += "Su,";
-    if (daysActive & MONDAY)    str += "Mo,";
-    if (daysActive & TUESDAY)   str += "Tu,";
-    if (daysActive & WEDNESDAY) str += "We,";
-    if (daysActive & THURSDAY)  str += "Th,";
-    if (daysActive & FRIDAY)    str += "Fr,";
-    if (daysActive & SATURDAY)  str += "Sa,";
-    if (str.length() > 0) str.remove(str.length() - 1); // Remove last comma
-    return str;
-}
-
-// Helper to parse DayOfWeek string from JSON
-uint8_t stringToDayOfWeek(String daysString) {
-    uint8_t days = 0;
-    if (daysString.indexOf("Su") != -1) days |= SUNDAY;
-    if (daysString.indexOf("Mo") != -1) days |= MONDAY;
-    if (daysString.indexOf("Tu") != -1) days |= TUESDAY;
-    if (daysString.indexOf("We") != -1) days |= WEDNESDAY;
-    if (daysString.indexOf("Th") != -1) days |= THURSDAY;
-    if (daysString.indexOf("Fr") != -1) days |= FRIDAY;
-    if (daysString.indexOf("Sa") != -1) days |= SATURDAY;
-    return days;
+String dayOfWeekToString(uint8_t days) {
+    String daysString = "";
+    if (days & 0b00000001) daysString += "Su,";
+    if (days & 0b00000010) daysString += "Mo,";
+    if (days & 0b00000100) daysString += "Tu,";
+    if (days & 0b00001000) daysString += "We,";
+    if (days & 0b00010000) daysString += "Th,";
+    if (days & 0b00100000) daysString += "Fr,";
+    if (days & 0b01000000) daysString += "Sa,";
+    if (daysString.length() > 0) {
+        daysString.remove(daysString.length() - 1); // Remove last comma
+    }
+    return daysString;
 }
 
 void handleRoot(AsyncWebServerRequest *request) {
@@ -581,6 +752,8 @@ void handleGetStatus(AsyncWebServerRequest *request) {
     dateTimeObj["second"] = currentDateTime.second;
     
     doc["dayOfWeek"] = dayOfWeekToString(getCurrentDayOfWeek());
+    doc["batteryLevel"] = batteryLevel;
+    doc["wifiRSSI"] = wifi_manager_get_rssi();
 
     JsonArray relayStatusArray = doc.createNestedArray("relays");
     for (int i = 0; i < NUM_RELAYS; i++) {
@@ -598,12 +771,15 @@ void handleGetStatus(AsyncWebServerRequest *request) {
     String operation_description = "Idle";
     String time_elapsed_str = "";
     String time_remaining_str = "";
+    unsigned long elapsed_s = 0;
+    unsigned long total_duration_s = 0;
 
     switch(currentOperation) {
         case OP_MANUAL_ZONE: {
             operation_description = "Manual Zone Running: " + String(systemConfig.zoneNames[currentRunningZone-1]);
-            unsigned long elapsed_s = (millis() - zoneStartTime) / 1000;
-            unsigned long remaining_s = (zoneDuration - (millis() - zoneStartTime)) / 1000;
+            elapsed_s = (millis() - zoneStartTime) / 1000;
+            total_duration_s = zoneDuration / 1000;
+            unsigned long remaining_s = total_duration_s - elapsed_s;
             time_elapsed_str = String(elapsed_s / 60) + "m " + String(elapsed_s % 60) + "s";
             time_remaining_str = String(remaining_s / 60) + "m " + String(remaining_s % 60) + "s";
             break;
@@ -612,21 +788,35 @@ void handleGetStatus(AsyncWebServerRequest *request) {
         case OP_SCHEDULED_CYCLE: {
             if (currentRunningCycle != -1) {
                 CycleConfig* cfg = cycles[currentRunningCycle];
-                operation_description = String(cfg->name) + " Running";
+                operation_description = String(cfg->name) + ": Running";
                 if (inInterZoneDelay) {
-                    unsigned long elapsed_delay_s = (millis() - cycleInterZoneDelayStartTime) / 1000;
-                    unsigned long total_delay_s = (unsigned long)cfg->interZoneDelay * 60;
-                    time_elapsed_str = "Delaying for " + String(total_delay_s - elapsed_delay_s) + "s";
+                    elapsed_s = (millis() - cycleInterZoneDelayStartTime) / 1000;
+                    total_duration_s = (unsigned long)cfg->interZoneDelay * 60;
+                    unsigned long remaining_s = total_duration_s - elapsed_s;
+                    time_elapsed_str = String(elapsed_s / 60) + "m " + String(elapsed_s % 60) + "s";
+                    time_remaining_str = String(remaining_s / 60) + "m " + String(remaining_s % 60) + "s";
+                    runningInfo["is_delay"] = true; // Indicate it's a delay
+                    // Add next zone info to description
+                    if (currentCycleZoneIndex + 1 < ZONE_COUNT) { // Check if there's a next zone
+                        operation_description = String(cfg->name) + ": Delaying " + String(systemConfig.zoneNames[currentCycleZoneIndex + 1]) ;
+                    } else {
+                        operation_description = String(cfg->name) + ": Delaying Cycle end";
+                    }
                 } else if (currentCycleZoneIndex < ZONE_COUNT) {
-                    unsigned long elapsed_s = (millis() - cycleZoneStartTime) / 1000;
-                    unsigned long total_s = (unsigned long)cfg->zoneDurations[currentCycleZoneIndex] * 60;
-                    time_elapsed_str = "Zone " + String(currentCycleZoneIndex + 1) + ": " + String(elapsed_s / 60) + "m " + String(elapsed_s % 60) + "s";
-                    time_remaining_str = String((total_s - elapsed_s) / 60) + "m " + String((total_s - elapsed_s) % 60) + "s";
+                    elapsed_s = (millis() - cycleZoneStartTime) / 1000;
+                    total_duration_s = (unsigned long)cfg->zoneDurations[currentCycleZoneIndex] * 60;
+                    unsigned long remaining_s = total_duration_s - elapsed_s;
+                    time_elapsed_str = String(elapsed_s / 60) + "m " + String(elapsed_s % 60) + "s";
+                    time_remaining_str = String(remaining_s / 60) + "m " + String(remaining_s % 60) + "s";
+                    operation_description = String(cfg->name) + ": Running" + String(systemConfig.zoneNames[currentCycleZoneIndex + 1]);
+                    runningInfo["is_delay"] = false; // Indicate it's not a delay
+
                 }
             }
             break;
         }
         default:
+            runningInfo["is_delay"] = false; // Default for other operations
             break;
     }
 
@@ -634,6 +824,8 @@ void handleGetStatus(AsyncWebServerRequest *request) {
     runningInfo["description"] = operation_description;
     runningInfo["time_elapsed"] = time_elapsed_str;
     runningInfo["time_remaining"] = time_remaining_str;
+    runningInfo["elapsed_s"] = elapsed_s;
+    runningInfo["total_duration_s"] = total_duration_s;
 
     String output;
     serializeJson(doc, output);

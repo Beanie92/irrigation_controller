@@ -6,6 +6,8 @@
 #include "web_server.h" // Include the web server header
 #include "wifi_manager.h" // Include the new WiFi manager
 #include "config_manager.h" // Include the configuration manager
+#include "current_sensor.h" // Include the current sensor header
+#include "battery.h" // Include the battery header
 #include "logo.h"
 #include <LittleFS.h>
 
@@ -45,7 +47,7 @@ const unsigned long buttonDebounce = 200; // milliseconds
 const int NUM_RELAYS = 8; // Made non-static for web_server.h extern
 // Relay 0 is dedicated to the borehole pump;
 // Relays 1..7 are the irrigation zones.
-static const int relayPins[NUM_RELAYS] = {19, 20, 17, 18, 15, 21, 1, 14}; 
+static const int relayPins[NUM_RELAYS] = {19, 20, 17, 18, 15, 21, 8, 14}; 
 bool relayStates[NUM_RELAYS] = {false, false, false, false, false, false, false, false};
 
 static const int PUMP_IDX = 0;   // borehole pump
@@ -75,9 +77,14 @@ bool isScreenDimmed = false;
 volatile bool uiDirty = true; // Flag to trigger UI redraw
 
 // -----------------------------------------------------------------------------
+//                        Battery Level
+// -----------------------------------------------------------------------------
+int batteryLevel = 100; // Default to 100 on boot
+
+// -----------------------------------------------------------------------------
 //                        Current Sensing Pin / Configuration
 // -----------------------------------------------------------------------------
-// const int CurrentSensorPin = 8; 
+// Current sensor is now handled in current_sensor.cpp
 
 
 // -----------------------------------------------------------------------------
@@ -403,7 +410,6 @@ void setup() {
     // If config fails to load, save the defaults
     saveConfig();
   }
-
   // Initialize the Web Server
   initWebServer();
 
@@ -475,6 +481,25 @@ void loop() {
 
   // Handle WiFi and NTP updates
   wifi_manager_handle();
+
+  // --- DEBUG: Read and print current sensor value ---
+  static unsigned long lastCurrentRead = 0;
+  if (millis() - lastCurrentRead > 2000) { // Read every 2 seconds
+    float current = read_wcs1800_current();
+    DEBUG_PRINTF("[CURRENT] Reading: %.5f A\n", current);
+    lastCurrentRead = millis();
+  }
+  // ----------------------------------------------------
+
+  // --- Read battery level ---
+  static unsigned long lastBatteryRead = 0;
+  if (millis() - lastBatteryRead > 5000) { // Read every 5 seconds
+    batteryLevel = read_battery_level();
+    DEBUG_PRINTF("[BATTERY] Level: %d%%\n", batteryLevel);
+    lastBatteryRead = millis();
+    uiDirty = true; // Redraw header with new level
+  }
+  // ----------------------------------------------------
   
   if (encoder_button_pressed && currentState == STATE_BOOTING) {
     wifi_manager_cancel_connection();
@@ -1035,7 +1060,7 @@ void navigateTo(UIState newState, bool isNavigatingBack) {
 // -----------------------------------------------------------------------------
 void drawMainMenu() {
   canvas.fillScreen(COLOR_BACKGROUND);
-  drawHeader(canvas, LEFT_PADDING, 10, currentDateTime, getCurrentDayOfWeek(), wifi_manager_get_ip());
+  drawHeader(canvas, LEFT_PADDING, 10, currentDateTime, getCurrentDayOfWeek(), wifi_manager_get_ip(), batteryLevel, wifi_manager_get_rssi());
   drawScrollableList(canvas, mainMenuScrollList, true);
 
   // Draw the logo in the bottom right corner
@@ -1049,7 +1074,7 @@ void drawMainMenu() {
 // -----------------------------------------------------------------------------
 void drawCyclesMenu() {
   canvas.fillScreen(COLOR_BACKGROUND);
-  drawHeader(canvas, LEFT_PADDING, 10, currentDateTime, getCurrentDayOfWeek(), wifi_manager_get_ip());
+  drawHeader(canvas, LEFT_PADDING, 10, currentDateTime, getCurrentDayOfWeek(), wifi_manager_get_ip(), batteryLevel, wifi_manager_get_rssi());
   drawScrollableList(canvas, cyclesMenuScrollList, true);
 }
 
@@ -1058,7 +1083,7 @@ void drawCyclesMenu() {
 // -----------------------------------------------------------------------------
 void drawCycleSubMenu(const char* label) {
   canvas.fillScreen(COLOR_BACKGROUND);
-  drawHeader(canvas, LEFT_PADDING, 10, currentDateTime, getCurrentDayOfWeek(), wifi_manager_get_ip());
+  drawHeader(canvas, LEFT_PADDING, 10, currentDateTime, getCurrentDayOfWeek(), wifi_manager_get_ip(), batteryLevel, wifi_manager_get_rssi());
   cycleSubMenuScrollList.title = label;
   drawScrollableList(canvas, cycleSubMenuScrollList, true);
 }
@@ -1110,7 +1135,7 @@ DayOfWeek getCurrentDayOfWeek() {
 // -----------------------------------------------------------------------------
 void drawManualRunMenu() {
   canvas.fillScreen(COLOR_BACKGROUND);
-  drawHeader(canvas, LEFT_PADDING, 10, currentDateTime, getCurrentDayOfWeek(), wifi_manager_get_ip());
+  drawHeader(canvas, LEFT_PADDING, 10, currentDateTime, getCurrentDayOfWeek(), wifi_manager_get_ip(), batteryLevel, wifi_manager_get_rssi());
 
   if (selectingDuration) {
     canvas.setTextSize(2);
@@ -1169,7 +1194,7 @@ void startManualZone(int zoneIdx) {
 
 void drawRunningZoneMenu() {
   canvas.fillScreen(COLOR_BACKGROUND);
-  drawHeader(canvas, LEFT_PADDING, 10, currentDateTime, getCurrentDayOfWeek(), wifi_manager_get_ip());
+  drawHeader(canvas, LEFT_PADDING, 10, currentDateTime, getCurrentDayOfWeek(), wifi_manager_get_ip(), batteryLevel, wifi_manager_get_rssi());
 
   canvas.setTextSize(2);
   canvas.setTextColor(COLOR_ACCENT_SECONDARY);
@@ -1259,7 +1284,7 @@ char setTimeDisplayStrings[7][32];
 const char* setTimeDisplayPointers[7];
 
 void drawSetSystemTimeMenu() {
-    drawHeader(canvas, LEFT_PADDING, 10, currentDateTime, getCurrentDayOfWeek(), wifi_manager_get_ip());
+    drawHeader(canvas, LEFT_PADDING, 10, currentDateTime, getCurrentDayOfWeek(), wifi_manager_get_ip(), batteryLevel, wifi_manager_get_rssi());
     
     // Set the background color based on editing state
     if (editingTimeField) {
@@ -1348,7 +1373,7 @@ void handleSetSystemTimeButton() {
 // -----------------------------------------------------------------------------
 void drawCycleConfigMenu(const char* label, CycleConfig& cfg) {
   canvas.fillScreen(COLOR_BACKGROUND);
-  drawHeader(canvas, LEFT_PADDING, 10, currentDateTime, getCurrentDayOfWeek(), wifi_manager_get_ip());
+  drawHeader(canvas, LEFT_PADDING, 10, currentDateTime, getCurrentDayOfWeek(), wifi_manager_get_ip(), batteryLevel, wifi_manager_get_rssi());
 
   // Update the display strings for the zone list before drawing
   for (int i = 0; i < ZONE_COUNT; i++) {
@@ -1585,7 +1610,7 @@ void updateCycleRun() {
 void drawCycleRunningMenu() {
   canvas.fillScreen(COLOR_BACKGROUND);
 
-  drawHeader(canvas, LEFT_PADDING, 10, currentDateTime, getCurrentDayOfWeek(), wifi_manager_get_ip());
+  drawHeader(canvas, LEFT_PADDING, 10, currentDateTime, getCurrentDayOfWeek(), wifi_manager_get_ip(), batteryLevel, wifi_manager_get_rssi());
   canvas.setTextSize(2);
   canvas.setTextColor(COLOR_ACCENT_SECONDARY);
 
@@ -1646,7 +1671,7 @@ void drawCycleRunningMenu() {
 // -----------------------------------------------------------------------------
 void drawSettingsMenu() {
   canvas.fillScreen(COLOR_BACKGROUND);
-  drawHeader(canvas, LEFT_PADDING, 10, currentDateTime, getCurrentDayOfWeek(), wifi_manager_get_ip());
+  drawHeader(canvas, LEFT_PADDING, 10, currentDateTime, getCurrentDayOfWeek(), wifi_manager_get_ip(), batteryLevel, wifi_manager_get_rssi());
   
   canvas.setTextSize(1);
   int yPos = HEADER_HEIGHT + 10;
@@ -1684,13 +1709,13 @@ void drawSettingsMenu() {
 
 void drawWiFiSetupLauncherMenu() {
   canvas.fillScreen(COLOR_BACKGROUND);
-  drawHeader(canvas, LEFT_PADDING, 10, currentDateTime, getCurrentDayOfWeek(), wifi_manager_get_ip());
+  drawHeader(canvas, LEFT_PADDING, 10, currentDateTime, getCurrentDayOfWeek(), wifi_manager_get_ip(), batteryLevel, wifi_manager_get_rssi());
   drawScrollableList(canvas, wifiSetupLauncherScrollList, true);
 }
 
 void drawWiFiResetMenu() {
   canvas.fillScreen(COLOR_BACKGROUND);
-  drawHeader(canvas, LEFT_PADDING, 10, currentDateTime, getCurrentDayOfWeek(), wifi_manager_get_ip());
+  drawHeader(canvas, LEFT_PADDING, 10, currentDateTime, getCurrentDayOfWeek(), wifi_manager_get_ip(), batteryLevel, wifi_manager_get_rssi());
   canvas.setTextSize(2);
   canvas.setTextColor(COLOR_ACCENT_SECONDARY);
   canvas.setCursor(LEFT_PADDING, HEADER_HEIGHT + 10);
@@ -1710,7 +1735,7 @@ void drawWiFiResetMenu() {
 
 void drawSystemInfoMenu() {
   canvas.fillScreen(COLOR_BACKGROUND);
-  drawHeader(canvas, LEFT_PADDING, 10, currentDateTime, getCurrentDayOfWeek(), wifi_manager_get_ip());
+  drawHeader(canvas, LEFT_PADDING, 10, currentDateTime, getCurrentDayOfWeek(), wifi_manager_get_ip(), batteryLevel, wifi_manager_get_rssi());
   canvas.setTextSize(2);
   canvas.setTextColor(COLOR_ACCENT_SECONDARY);
   canvas.setCursor(LEFT_PADDING, HEADER_HEIGHT + 10);
@@ -1730,6 +1755,10 @@ void drawSystemInfoMenu() {
   
   canvas.setCursor(LEFT_PADDING, y);
   canvas.printf("Free Heap: %d bytes", ESP.getFreeHeap());
+  y += 12;
+
+  canvas.setCursor(LEFT_PADDING, y);
+  canvas.printf("Battery: %.2fV (%d%%)", read_battery_voltage(), batteryLevel);
   y += 20;
 
   canvas.setCursor(LEFT_PADDING, y);
@@ -1806,6 +1835,13 @@ void startTestMode() {
 
 void updateTestMode() {
   if (!testModeActive) return;
+
+  // Periodically update the screen to show live data
+  static unsigned long lastDisplayUpdate = 0;
+  if (millis() - lastDisplayUpdate > 1000) { // Update every second
+    lastDisplayUpdate = millis();
+    uiDirty = true;
+  }
   
   unsigned long currentTime = millis();
   unsigned long elapsed = currentTime - testModeStartTime;
@@ -1842,7 +1878,7 @@ void updateTestMode() {
 
 void drawTestModeMenu() {
   canvas.fillScreen(COLOR_BACKGROUND);
-  drawHeader(canvas, LEFT_PADDING, 10, currentDateTime, getCurrentDayOfWeek(), wifi_manager_get_ip());
+  drawHeader(canvas, LEFT_PADDING, 10, currentDateTime, getCurrentDayOfWeek(), wifi_manager_get_ip(), batteryLevel, wifi_manager_get_rssi());
   
   canvas.setTextSize(2);
   canvas.setTextColor(COLOR_ACCENT_SECONDARY);
@@ -1866,6 +1902,13 @@ void drawTestModeMenu() {
     canvas.setNewLine();
     canvas.setTextColor(COLOR_ACCENT_PRIMARY);
     canvas.printf("Zone %d of %d", currentTestRelay, ZONE_COUNT);
+
+    // Display the current reading
+    float current = read_wcs1800_current();
+    canvas.setNewLine();
+    canvas.setTextColor(COLOR_WARNING); // Use a different color for the current
+    canvas.printf("Current: %.2f A", current);
+
   } else {
     canvas.print("Test Complete!");
   }

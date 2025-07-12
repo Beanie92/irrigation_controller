@@ -40,8 +40,11 @@ ESP32-C6 based irrigation controller with WiFi connectivity and NTP time synchro
 - Relay 3 (Zone 3): Pin 18
 - Relay 4 (Zone 4): Pin 15
 - Relay 5 (Zone 5): Pin 21
-- Relay 6 (Zone 6): Pin 1
+- Relay 6 (Zone 6): Pin 8
 - Relay 7 (Zone 7): Pin 14
+
+### Current Sensor
+-  Anlog Read: Pin 1
 
 ## WiFi Setup
 
@@ -170,7 +173,7 @@ Each cycle (A, B, C) can be configured with:
 3. Install required libraries via the Arduino Library Manager:
    - **Adafruit GFX Library**: A dependency for the display driver.
    - **ArduinoJson**: Used for handling JSON data for configuration.
-   - **ESPAsyncWebServer**: Powers the web interface.
+   - **ESPAsyncWebServer**: Powers the web interface. **Note**: This library seems to work reliably with version 3.7.1.
    - **LittleFS**: For file system storage.
    - **WiFiManager** by tzapu: For easy WiFi configuration.
 

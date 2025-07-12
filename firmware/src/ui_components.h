@@ -96,7 +96,8 @@ void drawScrollableList(CustomCanvas& canvas, ScrollableList& list, bool is_acti
 void handleScrollableListInput(ScrollableList& list, long encoder_diff);
 
 // Header Display Component
-void drawHeader(CustomCanvas& canvas, int x, int y, const SystemDateTime& dt, DayOfWeek dow, String ipAddress);
+void drawHeader(CustomCanvas& canvas, int x, int y, const SystemDateTime& dt, DayOfWeek dow, String ipAddress, int batteryLevel, int8_t rssi);
+void drawWifiIcon(CustomCanvas& canvas, int x, int y, int8_t rssi);
 
 // General UI Helpers
 void setRelativeCursor(CustomCanvas& canvas, int16_t dx, int16_t dy);
