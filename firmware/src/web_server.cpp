@@ -114,6 +114,7 @@ const char index_html[] PROGMEM = R"rawliteral(
     .zone { 
       padding: 8px; 
       border-radius: 4px; 
+      border: 1px solid #ccc; 
       width: 120px; 
       text-align: center; 
       display: flex; 
