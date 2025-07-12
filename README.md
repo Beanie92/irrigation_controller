@@ -2,7 +2,7 @@
 
 ![image](https://github.com/user-attachments/assets/09214a03-ba51-4387-acdd-ce2d5f2400e1)
 
-An ESP32-C6 based irrigation controller with a web interface, manual controls, and flexible scheduling.
+An ESP32-C6 based irrigation controller with web interface, manual controls, and flexible scheduling.
 
 ## Features
 
@@ -35,7 +35,7 @@ An ESP32-C6 based irrigation controller with a web interface, manual controls, a
   - Rotary Encoder Module - Breadboard Ready
   - 4 x 2-Channel Relay Module Opto Isolated 3.3V & 5V Logic 10A Load
   - Battery LiPo 5000mAh 3.7V
-  - WCS1800 Hall 35A Current Sensor
+  - WCS1500 Hall 35A Current Sensor
 
 ## Firmware
 

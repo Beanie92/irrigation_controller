@@ -43,19 +43,19 @@ const char index_html[] PROGMEM = R"rawliteral(
       align-items: flex-start;
       margin-bottom: 0px;
       position: relative; /* Needed for absolute positioning of status icons */
-      transition: all 0.1s ease; /* Smooth transition for changes */
+      transition: all 0.2s ease; /* Smooth transition for changes */
     }
     .header-img { 
       max-width: 200px; 
       max-height: 200px; 
       object-fit: contain; 
-      transition: all 0.1s ease; /* Smooth transition for logo size */
+      transition: all 0.2s ease; /* Smooth transition for logo size */
     }
     h1 {
       font-size: 1.2em; /* Smaller font size */
       margin-top: 5px; /* Less margin */
       margin-bottom: 5px; /* Add bottom margin for spacing */
-      transition: all 0.1s ease; /* Smooth transition for tagline */
+      transition: all 0.2s ease; /* Smooth transition for tagline */
     }
     h1, h2 { color: #4f8cb6; }
     
@@ -109,11 +109,10 @@ const char index_html[] PROGMEM = R"rawliteral(
     .btn-stop:hover { background-color: #c82333; }
     .status { padding: 10px;  background-color: #e9f4ef; border-radius: 4px; margin-bottom:15px; }
     .status strong { display: block; margin-bottom: 10px; }
-    .zone-status { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
-    .form-row { display: flex; align-items: center; margin-bottom: 10px; justify-content: center;}}
+    .zone-status { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; border: 1px solid #ddd; border-radius: 4px; padding: 10px; }
+    .form-row { display: flex; align-items: center; margin-bottom: 10px; justify-content: center;}
     .zone { 
       padding: 8px; 
-      border: 1px solid #ccc; 
       border-radius: 4px; 
       width: 120px; 
       text-align: center; 
@@ -276,6 +275,11 @@ const char index_html[] PROGMEM = R"rawliteral(
       <h2>Zone Names</h2>
       <div id="zoneNamesConfig">Loading...</div>
       <button onclick="saveZoneNames()">Save Zone Names</button>
+    </div>
+
+    <div class="section">
+      <h2>System</h2>
+      <button onclick="restartDevice()" class="btn-stop">Restart Device</button>
     </div>
 
   </div>
@@ -640,6 +644,23 @@ const char index_html[] PROGMEM = R"rawliteral(
     });
   }
 
+  function restartDevice() {
+    if (confirm("Are you sure you want to restart the device?")) {
+      fetch('/api/reset', { method: 'POST' })
+        .then(response => {
+          if (response.ok) {
+            showMessage('Device is restarting...', 'success');
+          } else {
+            showMessage('Failed to send restart command.', 'error');
+          }
+        })
+        .catch(err => {
+          console.error('Error sending restart command:', err);
+          showMessage('Error sending restart command.', 'error');
+        });
+    }
+  }
+
   // Initial data fetch
   window.onload = () => {
     fetchStatus();
@@ -808,7 +829,7 @@ void handleGetStatus(AsyncWebServerRequest *request) {
                     unsigned long remaining_s = total_duration_s - elapsed_s;
                     time_elapsed_str = String(elapsed_s / 60) + "m " + String(elapsed_s % 60) + "s";
                     time_remaining_str = String(remaining_s / 60) + "m " + String(remaining_s % 60) + "s";
-                    operation_description = String(cfg->name) + ": Running" + String(systemConfig.zoneNames[currentCycleZoneIndex + 1]);
+                    operation_description = String(cfg->name) + ": Running " + String(systemConfig.zoneNames[currentCycleZoneIndex + 1]);
                     runningInfo["is_delay"] = false; // Indicate it's not a delay
 
                 }
@@ -955,6 +976,7 @@ void handleGetZoneNames(AsyncWebServerRequest *request) {
     request->send(200, "application/json", output);
 }
 
+
 void handleSetZoneNames(AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
     Serial.println("Handling set zone names request.");
     if (index == 0) {
@@ -981,6 +1003,12 @@ void handleSetZoneNames(AsyncWebServerRequest *request, uint8_t *data, size_t le
     }
 }
 
+void handleReset(AsyncWebServerRequest *request) {
+    request->send(200, "application/json", "{\"success\":true, \"message\":\"Restarting...\"}");
+    delay(100); // Give the response time to send
+    ESP.restart();
+}
+
 void initWebServer() {
     Serial.println("Initializing web server...");
     server.on("/", HTTP_GET, handleRoot);
@@ -992,6 +1020,7 @@ void initWebServer() {
     server.on("/api/cycle", HTTP_POST, [](AsyncWebServerRequest *request){}, NULL, handleSetCycle);
     server.on("/api/manual", HTTP_POST, [](AsyncWebServerRequest *request){}, NULL, handleManualControl);
     server.on("/api/zonenames", HTTP_POST, [](AsyncWebServerRequest *request){}, NULL, handleSetZoneNames);
+    server.on("/api/reset", HTTP_POST, handleReset);
 
     server.onNotFound(handleNotFound);
     server.begin();

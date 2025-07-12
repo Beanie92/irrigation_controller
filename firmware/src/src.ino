@@ -105,6 +105,7 @@ enum UIState {
   STATE_WIFI_SETUP_LAUNCHER, // Renamed from STATE_WIFI_SETUP
   STATE_WIFI_RESET,
   STATE_SYSTEM_INFO,
+  STATE_RESTART_DEVICE,
   STATE_PROG_A,
   STATE_PROG_B,
   STATE_PROG_C,
@@ -148,12 +149,13 @@ int selectedCycleSubMenuIndex = 0;
 ScrollableList cycleSubMenuScrollList;
 
 // Settings Menu Items
-static const int SETTINGS_MENU_ITEMS = 4;
+static const int SETTINGS_MENU_ITEMS = 5;
 const char* settingsMenuLabels[SETTINGS_MENU_ITEMS] = {
   "WiFi Setup",
   "Set Time Manually",
   "WiFi Reset",
-  "System Info"
+  "System Info",
+  "Restart Device"
 };
 int selectedSettingsMenuIndex = 0;
 ScrollableList settingsMenuScrollList;
@@ -304,6 +306,7 @@ void drawSettingsMenu();
 void drawWiFiResetMenu();
 void drawSystemInfoMenu();
 void drawWiFiSetupLauncherMenu(); // Renamed from drawWiFiSetupMenu
+void drawRestartDeviceMenu();
 
 // Test Mode functions
 void startTestMode();
@@ -450,6 +453,7 @@ void render() {
     case STATE_WIFI_SETUP_LAUNCHER: drawWiFiSetupLauncherMenu(); break;
     case STATE_WIFI_RESET:      drawWiFiResetMenu(); break;
     case STATE_SYSTEM_INFO:     drawSystemInfoMenu(); break;
+    case STATE_RESTART_DEVICE:  drawRestartDeviceMenu(); break;
     default:
       // Draw an error screen or something
       canvas.fillScreen(COLOR_ERROR);
@@ -759,6 +763,7 @@ void handleButtonPress() {
               case 1: navigateTo(STATE_SET_SYSTEM_TIME); break;
               case 2: navigateTo(STATE_WIFI_RESET); break;
               case 3: navigateTo(STATE_SYSTEM_INFO); break;
+              case 4: navigateTo(STATE_RESTART_DEVICE); break;
             }
           }
           break;
@@ -1809,6 +1814,24 @@ void drawSystemInfoMenu() {
   canvas.setTextColor(COLOR_ACCENT_SECONDARY);
   canvas.setCursor(LEFT_PADDING, 225);
   canvas.println("Press button to return");
+}
+
+void drawRestartDeviceMenu() {
+  canvas.fillScreen(COLOR_BACKGROUND);
+  drawHeader(canvas, LEFT_PADDING, 10, currentDateTime, getCurrentDayOfWeek(), wifi_manager_get_ip(), batteryLevel, wifi_manager_get_rssi());
+  canvas.setTextSize(2);
+  canvas.setTextColor(COLOR_ACCENT_SECONDARY);
+  canvas.setCursor(LEFT_PADDING, HEADER_HEIGHT + 10);
+  canvas.println("Restart Device");
+
+  canvas.setTextColor(COLOR_TEXT_PRIMARY);
+  canvas.setCursor(LEFT_PADDING, HEADER_HEIGHT + 50);
+  canvas.println("Device is restarting...");
+
+  st7789_push_canvas(canvas.getBuffer(), 320, 240);
+  delay(2000);
+
+  ESP.restart();
 }
 
 // -----------------------------------------------------------------------------
