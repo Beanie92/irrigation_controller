@@ -3,27 +3,8 @@
   <title>Irrigation Controller</title>
   <link rel="icon" href="/logo.webp" type="image/webp">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="style.css">
   <style>
-    body { 
-      font-family: Arial, sans-serif; 
-      margin: 0; 
-      background-color: #f4f4f4; 
-      color: #333; 
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      min-height: 100vh;
-      overflow-x: hidden;
-    }
-    .container { 
-      background-color: #fff; 
-      padding: 20px; 
-      border-radius: 8px; 
-      box-shadow: 0 0 10px rgba(0,0,0,0.1); 
-      max-width: 800px; 
-      width: 100%;
-      margin: 10px;
-    }
     .header {
       display: flex;
       flex-direction: column;
@@ -43,6 +24,25 @@
       margin-top: 5px; /* Less margin */
       margin-bottom: 5px; /* Add bottom margin for spacing */
       transition: all 0.2s ease; /* Smooth transition for tagline */
+    }
+    
+    /* Sticky header styles */
+    .header.sticky {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      width: 100%;
+      background-color: #fff;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+      z-index: 999;
+      flex-direction: row;
+      align-items: center;
+      padding: 5px 20px;
+      justify-content: space-between;
+      box-sizing: border-box;
+    }
+    .header.sticky .header-img {
     }
     h1, h2 { color: #4f8cb6; }
     

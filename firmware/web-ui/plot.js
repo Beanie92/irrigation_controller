@@ -35,29 +35,36 @@ document.addEventListener('DOMContentLoaded', () => {
     lineWidth: 2,
   });
 
-  const data = [];
+  let lastTimestamp = 0;
 
-  function fetchData() {
-    console.log("Fetching data...");
-    fetch('/api/current')
+  function fetchHistoryData(isInitialLoad = false) {
+    const url = isInitialLoad ? '/api/current_history' : `/api/current_history?since=${lastTimestamp}`;
+    
+    fetch(url)
       .then(response => response.json())
       .then(apiData => {
-        console.log("Data received:", apiData);
-        const now = new Date();
-        const newDataPoint = {
-          time: now.getTime() / 1000,
-          value: apiData.current,
-        };
-        data.push(newDataPoint);
+        if (apiData.length === 0) return;
 
-        if (data.length > 30) {
-          data.shift();
+        const formattedData = apiData.map(entry => ({
+          time: entry.timestamp,
+          value: entry.current
+        }));
+
+        if (isInitialLoad) {
+          lineSeries.setData(formattedData);
+        } else {
+          formattedData.forEach(dataPoint => {
+            lineSeries.update(dataPoint);
+          });
         }
 
-        lineSeries.setData(data);
+        // Update the last timestamp from the most recent data point
+        lastTimestamp = apiData[apiData.length - 1].timestamp;
       })
-      .catch(err => console.error('Error fetching current data:', err));
+      .catch(err => console.error('Error fetching current history data:', err));
   }
 
-  setInterval(fetchData, 2000);
+  // Fetch full history initially, then poll for new data
+  fetchHistoryData(true);
+  setInterval(() => fetchHistoryData(false), 5000);
 });

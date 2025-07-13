@@ -2,6 +2,7 @@
 #include "config_manager.h"
 #include "wifi_manager.h"
 #include "battery.h"
+#include "current_sensor.h"
 #include <ESPAsyncWebServer.h>
 #include <ArduinoJson.h>
 #include "LittleFS.h"
@@ -149,6 +150,32 @@ void handleGetCurrent(AsyncWebServerRequest *request) {
     // Serial.println("Handling get current request.");
     StaticJsonDocument<64> doc;
     doc["current"] = read_wcs1800_current();
+    String output;
+    serializeJson(doc, output);
+    request->send(200, "application/json", output);
+}
+
+void handleGetCurrentHistory(AsyncWebServerRequest *request) {
+    uint32_t since = 0;
+    if (request->hasParam("since")) {
+        since = request->getParam("since")->value().toInt();
+    }
+
+    const std::vector<CurrentHistoryEntry>& history = get_current_history();
+    
+    const size_t capacity = JSON_ARRAY_SIZE(history.size()) + history.size() * JSON_OBJECT_SIZE(2);
+    DynamicJsonDocument doc(capacity);
+
+    JsonArray historyArray = doc.to<JsonArray>();
+    for (const auto& entry : history) {
+        uint32_t unix_time = get_unix_time_from_millis(entry.timestamp);
+        if (unix_time > since) {
+            JsonObject obj = historyArray.createNestedObject();
+            obj["timestamp"] = unix_time;
+            obj["current"] = entry.current;
+        }
+    }
+
     String output;
     serializeJson(doc, output);
     request->send(200, "application/json", output);
@@ -344,6 +371,7 @@ void initWebServer() {
     server.on("/api/reset", HTTP_POST, handleReset);
     server.on("/api/cycles", HTTP_GET, handleGetCycles);
     server.on("/api/current", HTTP_GET, handleGetCurrent);
+    server.on("/api/current_history", HTTP_GET, handleGetCurrentHistory);
     server.on("/api/zonenames", HTTP_GET, handleGetZoneNames);
     server.on("/api/manual", HTTP_POST, [](AsyncWebServerRequest * request){}, NULL, handleManualControl);
     server.on("/api/cycles", HTTP_POST, [](AsyncWebServerRequest * request){}, NULL, handleSetCycle);

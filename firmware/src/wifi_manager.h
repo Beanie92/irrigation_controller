@@ -28,5 +28,6 @@ void wifi_manager_cancel_connection();
 
 // Time synchronization
 void wifi_manager_update_system_time(SystemDateTime& dateTime);
+uint32_t get_unix_time_from_millis(uint32_t millis_val);
 
 #endif // WIFI_MANAGER_H

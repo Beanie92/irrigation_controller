@@ -500,6 +500,9 @@ void loop() {
   }
   // ----------------------------------------------------
 
+  // Update the current history
+  update_current_history();
+
   // --- Read battery level ---
   static unsigned long lastBatteryRead = 0;
   if (millis() - lastBatteryRead > 5000) { // Read every 5 seconds

@@ -35,6 +35,7 @@ static const long gmtOffset_sec = 7200;
 static const int daylightOffset_sec = 0;
 static bool isConnecting = false;
 static bool portalRunning = false;
+static uint32_t time_offset_s = 0; // Offset between boot time and Unix time
 
 static void sync_time_with_ntp();
 static void display_wifi_info();
@@ -188,6 +189,13 @@ void wifi_manager_update_system_time(SystemDateTime& dateTime) {
     dateTime.second = timeinfo.tm_sec;
 }
 
+uint32_t get_unix_time_from_millis(uint32_t millis_val) {
+    if (time_offset_s == 0) {
+        return 0; // Return 0 if time has not been synced yet
+    }
+    return time_offset_s + (millis_val / 1000);
+}
+
 static void sync_time_with_ntp() {
     if (!wifiConnected) {
         DEBUG_PRINTLN("Cannot sync time - WiFi not connected.");
@@ -199,9 +207,12 @@ static void sync_time_with_ntp() {
     
     struct tm timeinfo;
     if (getLocalTime(&timeinfo, 5000)) {
+        time_t now;
+        time(&now);
+        time_offset_s = now - (millis() / 1000);
         timeSync = true;
         lastNTPSync = millis();
-        DEBUG_PRINTLN("NTP time synchronization successful!");
+        DEBUG_PRINTF("NTP time synchronization successful! Time offset: %u\n", time_offset_s);
     } else {
         timeSync = false;
         DEBUG_PRINTLN("Failed to synchronize with NTP server.");
