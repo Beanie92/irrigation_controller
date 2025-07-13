@@ -1,5 +1,4 @@
 import { createChart, LineSeries } from 'lightweight-charts';
-import './src/style.css';
 
 document.addEventListener('DOMContentLoaded', () => {
   console.log("Plot script started");

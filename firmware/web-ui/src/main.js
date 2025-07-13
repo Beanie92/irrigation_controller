@@ -1,5 +1,3 @@
-import './style.css';
-
 const dayNames = ["SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"];
 let zoneNames = [];
 let autoRefreshInterval = null;

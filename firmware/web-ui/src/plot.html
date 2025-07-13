@@ -2,15 +2,42 @@
 <head>
   <title>Current Plot</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <link rel="stylesheet" href="style.css">
   <style>
-    .chart-container { width: 90%; margin: auto; height: 300px; }
+    body { 
+      font-family: Arial, sans-serif; 
+      margin: 0; 
+      background-color: #f4f4f4; 
+      color: #333; 
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+    .container { 
+      background-color: #fff; 
+      padding: 20px; 
+      border-radius: 8px; 
+      box-shadow: 0 0 10px rgba(0,0,0,0.1); 
+      max-width: 800px; 
+      width: 100%;
+      margin: 10px;
+    }
+    h1, h2 { color: #4f8cb6; }
+    .section { margin-bottom: 20px; padding: 15px; padding-top: 0px; border: 1px solid #ddd; border-radius: 4px; }
+    button {
+      background-color: #6dbcc0; color: white; padding: 10px 15px; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; margin-right: 5px;
+    }
+    button:hover { background-color: #4f8cb6; }
+    .chart-container { width: 100%; margin: auto; }
   </style>
 </head>
 <body>
   <div class="container">
-    <h1>Live Current Reading</h1>
-    <div class="chart-container" id="chart-container"></div>
+    <div class="section">
+      <h2>Live Current Reading</h2>
+      <div class="chart-container" id="chart-container" style="height: 300px;"></div>
+    </div>
     <button onclick="window.location.href='/'">Back to Main</button>
   </div>
 </body>

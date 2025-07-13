@@ -3,7 +3,205 @@
   <title>Irrigation Controller</title>
   <link rel="icon" href="/logo.webp" type="image/webp">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <link rel="stylesheet" href="style.css">
+  <style>
+    body { 
+      font-family: Arial, sans-serif; 
+      margin: 0; 
+      background-color: #f4f4f4; 
+      color: #333; 
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+    .container { 
+      background-color: #fff; 
+      padding: 20px; 
+      border-radius: 8px; 
+      box-shadow: 0 0 10px rgba(0,0,0,0.1); 
+      max-width: 800px; 
+      width: 100%;
+      margin: 10px;
+    }
+    .header {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      margin-bottom: 0px;
+      position: relative; /* Needed for absolute positioning of status icons */
+      transition: all 0.2s ease; /* Smooth transition for changes */
+    }
+    .header-img { 
+      max-width: 200px; 
+      max-height: 200px; 
+      object-fit: contain; 
+      transition: all 0.2s ease; /* Smooth transition for logo size */
+    }
+    h1 {
+      font-size: 1.2em; /* Smaller font size */
+      margin-top: 5px; /* Less margin */
+      margin-bottom: 5px; /* Add bottom margin for spacing */
+      transition: all 0.2s ease; /* Smooth transition for tagline */
+    }
+    h1, h2 { color: #4f8cb6; }
+    
+    /* Sticky header styles */
+    .header.sticky {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      width: 100%;
+      background-color: #fff;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+      z-index: 999;
+      flex-direction: row;
+      align-items: center;
+      padding: 5px 20px;
+      justify-content: space-between;
+      box-sizing: border-box;
+    }
+    .header.sticky .header-img {
+      max-width: 75px; /* Smaller logo when sticky */
+      max-height: 75px;
+
+    }
+
+    .header.sticky h1 {
+      display: none; /* Hide tagline when sticky */
+    }
+    .header.sticky .status-icons {
+      position: static; /* Reset position for sticky header */
+      margin-left: auto; /* Push icons to the right */
+    }
+
+    .section { margin-bottom: 20px; padding: 15px; padding-top: 0px; border: 1px solid #ddd; border-radius: 4px; }
+    label { display: block; margin-bottom: 5px; font-weight: bold; }
+    .form-row label { display: inline-block; margin-right: 10px; margin-bottom: 0; flex-shrink: 0; width: 150px; text-align: right; }
+    input[type="text"], input[type="number"], select {
+      width: 100%; 
+      padding: 10px; 
+      margin-bottom: 10px; 
+      border: 1px solid #ccc; 
+      border-radius: 4px;
+      box-sizing: border-box;
+    }
+    .form-row input, .form-row select { width: auto; flex-grow: 1; margin-bottom: 0; max-width: 12em}
+    button {
+      background-color: #6dbcc0; color: white; padding: 10px 15px; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; margin-right: 5px;
+    }
+    button:hover { background-color: #4f8cb6; }
+    .btn-stop { background-color:#dc3545; }
+    .btn-stop:hover { background-color: #c82333; }
+    .status { padding: 10px;  background-color: #e9f4ef; border-radius: 4px; margin-bottom:15px; }
+    .status strong { display: block; margin-bottom: 10px; }
+    .zone-status { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; border: 1px solid #ddd; border-radius: 4px; padding: 10px; }
+    .form-row { display: flex; align-items: center; margin-bottom: 10px; justify-content: center;}
+    .zone { 
+      padding: 8px; 
+      border-radius: 4px; 
+      border: 1px solid #ccc; 
+      width: 120px; 
+      text-align: center; 
+      display: flex; 
+      justify-content: center; 
+      align-items: center; 
+    }
+    .zone.active { background-color: #7eb659; color: white; }
+    .cycle-config { margin-bottom: 15px; }
+    summary {
+      cursor: pointer;
+      padding: 10px;
+      background-color: #f2f2f2;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      margin-bottom: 5px;
+      font-weight: bold;
+    }
+    details > div {
+      padding: 10px;
+      border: 1px solid #ddd;
+      border-top: none;
+      border-radius: 0 0 4px 4px;
+    }
+    .days {
+    display: flex;
+    justify-content: left;
+    flex-wrap: wrap;
+    padding-bottom: 5px;
+    }
+    .days button { padding: 5px 8px; margin: 2px; background-color: #6c757d; flex-grow: 1; text-align: center; width: 40px; }
+    .days button.active { background-color: #7eb659; }
+    #message {
+      position: fixed;
+      bottom: -100px; /* Start off-screen */
+      left: 0;
+      right: 0;
+      padding: 10px;
+      z-index: 1001;
+      text-align: center;
+      box-shadow: 0 -2px 5px rgba(0,0,0,0.2);
+      transition: bottom 0.5s;
+    }
+    #message.show {
+      bottom: 0;
+    }
+    .success { background-color: #d4edda; color: #7eb659; border-bottom: 1px solid #c3e6cb; }
+    .error { background-color: #f8d7da; color: #721c24; border-bottom: 1px solid #f5c6cb; }
+    .status-icons { display: flex; gap: 10px; align-items: center; }
+    #statusDateTime { display: flex; justify-content: space-between; align-items: center; }
+    #wifi-icon, #battery-icon { font-size: 24px; }
+    #battery-icon {
+        width: 24px; height: 12px; border: 1px solid #ccc; border-radius: 2px;
+        position: relative;
+    }
+    #battery-icon::after {
+        content: ''; position: absolute; top: 2px; right: -5px;
+        width: 3px; height: 8px; background-color: #ccc;
+        border-radius: 0 1px 1px 0;
+    }
+    #battery-level {
+        height: 100%; background-color: #7eb659; border-radius: 1px;
+    }
+    #wifi-icon { display: flex; align-items: flex-end; gap: 2px; }
+    .wifi-bar { width: 4px; background-color: #ccc; border-radius: 1px; }
+    .progress-bar-container {
+      width: 100%;
+      background-color: #e0e0e0;
+      border-radius: 5px;
+      overflow: hidden;
+      margin-top: 10px;
+    }
+    .progress-bar {
+      height: 20px;
+      background-color: #4f8cb6;
+      width: 0%;
+      text-align: center;
+      line-height: 20px;
+      color: white;
+      font-size: 0.8em;
+      border-radius: 5px;
+      /* Barber pole effect */
+      background-size: 30px 30px;
+      background-image: linear-gradient(
+        -45deg, 
+        rgba(255, 255, 255, 0.1) 25%, 
+        transparent 25%, 
+        transparent 50%, 
+        rgba(255, 255, 255, 0.1) 50%, 
+        rgba(255, 255, 255, 0.1) 75%, 
+        transparent 75%, 
+        transparent
+      );
+      animation: move-stripes 2s linear infinite;
+    }
+
+    @keyframes move-stripes {
+      from { background-position: 0 0; }
+      to { background-position: 30px 0; }
+    }
+  </style>
 </head>
 <body>
   <div class="container">
