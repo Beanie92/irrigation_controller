@@ -4,6 +4,7 @@
 #include <ESPAsyncWebServer.h>
 #include <ArduinoJson.h>
 #include "ui_components.h" // For SystemDateTime, CycleConfig, DayOfWeek, ZONE_COUNT
+#include "current_sensor.h"
 
 extern AsyncWebServer server; // Declare the server object as extern
 
@@ -38,10 +39,12 @@ extern int batteryLevel;
 // Web server functions
 void initWebServer();
 void handleRoot(AsyncWebServerRequest *request);
+void handlePlot(AsyncWebServerRequest *request);
 void handleNotFound(AsyncWebServerRequest *request);
 
 // API Handlers
 void handleGetStatus(AsyncWebServerRequest *request);
+void handleGetCurrent(AsyncWebServerRequest *request);
 void handleGetTime(AsyncWebServerRequest *request);
 void handleSetTime(AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total);
 void handleGetCycles(AsyncWebServerRequest *request);

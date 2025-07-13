@@ -177,6 +177,42 @@ Each cycle (A, B, C) can be configured with:
    - **LittleFS**: For file system storage.
    - **WiFiManager** by tzapu: For easy WiFi configuration.
 
+### Web UI Development
+
+The web interface assets (HTML, JavaScript) are located in the `web-ui` directory. This project uses `webpack` to bundle and optimize the assets.
+
+**Prerequisites:**
+- [Node.js and npm](https://nodejs.org/en/download/)
+
+**Workflow:**
+
+1.  **Navigate to the UI directory:**
+    ```bash
+    cd web-ui
+    ```
+
+2.  **Install dependencies** (only needs to be done once):
+    ```bash
+    npm install
+    ```
+
+3.  **Make changes** to the source files located in `web-ui/src` and `web-ui/plot.js`.
+
+4.  **Build the web assets:**
+    ```bash
+    npm run build
+    ```
+    This command will:
+    - Bundle the JavaScript and HTML files.
+    - Copy static assets.
+    - Create Gzip-compressed versions of the assets (`.gz`).
+    - Place all the final files into the `firmware/data` directory.
+
+5.  **Upload to ESP32:**
+    - After building, use the **Tools > ESP32 Sketch Data Upload** option in the Arduino IDE. This will upload the contents of the `data` directory to the device's LittleFS filesystem.
+
+The firmware is configured to automatically serve the gzipped assets, which reduces storage space and improves loading times.
+
 ### Serial Debug Output
 Enable debug output by setting:
 ```cpp

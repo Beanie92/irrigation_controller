@@ -3,3 +3,8 @@
 .vscode/c_cpp_properties.json
 .vscode/launch.json
 .vscode/ipch
+
+# Node.js
+web-ui/node_modules
+web-ui/dist
+/src/data/

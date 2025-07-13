@@ -1,0 +1,79 @@
+<!DOCTYPE HTML><html>
+<head>
+  <title>Irrigation Controller</title>
+  <link rel="icon" href="/logo.webp" type="image/webp">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <a href="https://github.com/Beanie92/irrigation_controller" target="_blank">
+        <img src="assets/logo.webp" class="header-img">
+      </a>
+      <h1>Smart Irrigation Controller</h1>
+    </div>
+
+    <div class="section">
+      <h2>System Status</h2>
+      <div class="status" id="statusDateTime">
+        <span id="time-display">Loading...</span>
+        <div class="status-icons">
+          <div id="wifi-icon"></div>
+          <div id="battery-icon"></div>
+        </div>
+      </div>
+      <div class="status" id="runningStatus" style="display: none;">
+        <strong id="runningDescription"></strong>
+        <div class="progress-bar-container">
+          <div class="progress-bar" id="runningProgressBar"></div>
+        </div>
+        <span id="runningTimeInfo" style="font-size: 0.9em; display: block; text-align: left; margin-top: 5px;"></span>
+      </div>
+      <div class="status">
+        <div class="zone-status" id="statusRelays">Loading...</div>
+      </div>
+      <label for="autoRefreshToggle" style="display: flex; align-items: center; margin-left: 10px;">
+        <input type="checkbox" id="autoRefreshToggle" onchange="toggleAutoRefresh(this.checked)" checked style="accent-color: #4f8cb6; margin-right: 5px;">
+        Auto-Refresh
+      </label>
+    </div>
+
+    <div class="section">
+      <h2>Manual Control</h2>
+      <div class="form-row">
+        <label for="manualZone">Select Zone:</label>
+        <select id="manualZone">
+          <!-- Options will be populated by JS -->
+        </select>
+      </div>
+      <div class="form-row">
+        <label for="manualDuration">Duration (minutes):</label>
+        <input type="number" id="manualDuration" value="5" min="1" max="120">
+      </div>
+      <button onclick="startManualZone()">Start Zone</button>
+      <button onclick="stopAll()" class="btn-stop">Stop All</button>
+    </div>
+    
+    <div class="section">
+      <h2>Irrigation Cycles</h2>
+      <div id="cyclesConfig">Loading...</div>
+      <button onclick="fetchCycles()">Refresh Cycles</button>
+    </div>
+
+    <div class="section">
+      <h2>Zone Names</h2>
+      <div id="zoneNamesConfig">Loading...</div>
+      <button onclick="saveZoneNames()">Save Zone Names</button>
+    </div>
+
+    <div class="section">
+      <h2>System</h2>
+      <button onclick="window.location.href='/plot.html'">View Current Plot</button>
+      <button onclick="restartDevice()" class="btn-stop">Restart Device</button>
+    </div>
+
+  </div>
+  <div id="message"></div>
+</body>
+</html>

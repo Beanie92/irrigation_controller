@@ -14,7 +14,7 @@
 // -----------------------------------------------------------------------------
 //                           DEBUG CONFIGURATION
 // -----------------------------------------------------------------------------
-#define DEBUG_ENABLED true  // Set to false to disable all debug logging
+#define DEBUG_ENABLED false  // Set to false to disable all debug logging
 
 #if DEBUG_ENABLED
   #define DEBUG_PRINT(x) Serial.print(x)
@@ -398,6 +398,11 @@ void setup() {
     relayStates[i] = false;
     DEBUG_PRINTF("Relay %d (pin %d): OFF\n", i, relayPins[i]);
   }
+
+  // Initialize the current sensor
+  DEBUG_PRINTLN("Initializing current sensor...");
+  setup_current_sensor();
+  DEBUG_PRINTLN("Current sensor initialized.");
 
   // Initialize WiFi Manager. It will start connecting if credentials are saved.
   wifi_manager_init();
