@@ -28,17 +28,18 @@ document.addEventListener('DOMContentLoaded', () => {
       timeVisible: true,
       secondsVisible: true,
     },
-    priceScale: {
-      borderColor: 'rgba(197, 203, 206, 0.8)',
-      formatter: price => {
-        return price.toFixed(3); // Format to 3 decimal places
-      },
-    },
   });
 
   const lineSeries = chart.addSeries(LineSeries, {
     color: 'rgba(75, 192, 192, 1)',
     lineWidth: 2,
+  });
+
+  chart.priceScale().applyOptions({
+    borderColor: 'rgba(197, 203, 206, 0.8)',
+    tickMarkFormatter: (price) => {
+      return price.toFixed(3);
+    },
   });
 
   let lastTimestamp = 0;
