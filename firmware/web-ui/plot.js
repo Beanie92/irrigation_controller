@@ -28,6 +28,12 @@ document.addEventListener('DOMContentLoaded', () => {
       timeVisible: true,
       secondsVisible: true,
     },
+    priceScale: {
+      borderColor: 'rgba(197, 203, 206, 0.8)',
+      formatter: price => {
+        return price.toFixed(3); // Format to 3 decimal places
+      },
+    },
   });
 
   const lineSeries = chart.addSeries(LineSeries, {
@@ -64,7 +70,31 @@ document.addEventListener('DOMContentLoaded', () => {
       .catch(err => console.error('Error fetching current history data:', err));
   }
 
-  // Fetch full history initially, then poll for new data
+  const autoRefreshCheckbox = document.getElementById('autoRefreshCheckbox');
+  let refreshInterval;
+
+  function startAutoRefresh() {
+    if (!refreshInterval) {
+      refreshInterval = setInterval(() => fetchHistoryData(false), 5000);
+    }
+  }
+
+  function stopAutoRefresh() {
+    if (refreshInterval) {
+      clearInterval(refreshInterval);
+      refreshInterval = null;
+    }
+  }
+
+  autoRefreshCheckbox.addEventListener('change', () => {
+    if (autoRefreshCheckbox.checked) {
+      startAutoRefresh();
+    } else {
+      stopAutoRefresh();
+    }
+  });
+
+  // Fetch full history initially and start polling
   fetchHistoryData(true);
-  setInterval(() => fetchHistoryData(false), 5000);
+  startAutoRefresh();
 });
