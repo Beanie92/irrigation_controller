@@ -38,14 +38,22 @@
       background-color: #6dbcc0; color: white; padding: 10px 15px; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; margin-right: 5px;
     }
     button:hover { background-color: #4f8cb6; }
-    .chart-container { width: 100%; margin: auto; }
+    .chart-container { height: 400px; width: 100%; margin: auto; }
+
+    @media (max-width: 600px) {
+      .chart-container {
+        height: 500px; /* Taller on mobile */
+      }
+    }
   </style>
 </head>
 <body>
   <div class="container">
     <div class="section">
       <h2>Pump Current</h2>
-      <canvas id="currentChart"></canvas>
+      <div class="chart-container">
+        <canvas id="currentChart"></canvas>
+      </div>
     </div>
     <button onclick="window.location.href='/'">Back to Main</button>
     <label style="margin-left: 15px;">
