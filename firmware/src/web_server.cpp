@@ -358,14 +358,6 @@ void initWebServer() {
     }
     Serial.println("Finished listing files.");
 
-    // Explicitly handle root and plot pages
-    server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
-        request->send(LittleFS, "/index.html", "text/html");
-    });
-    server.on("/plot.html", HTTP_GET, [](AsyncWebServerRequest *request){
-        request->send(LittleFS, "/plot.html", "text/html");
-    });
-
     // API Handlers
     server.on("/api/status", HTTP_GET, handleGetStatus);
     server.on("/api/reset", HTTP_POST, handleReset);
@@ -377,8 +369,13 @@ void initWebServer() {
     server.on("/api/cycles", HTTP_POST, [](AsyncWebServerRequest * request){}, NULL, handleSetCycle);
     server.on("/api/zonenames", HTTP_POST, [](AsyncWebServerRequest * request){}, NULL, handleSetZoneNames);
 
-    // Serve static files from LittleFS. This should be LAST before notFound
-    server.serveStatic("/", LittleFS, "/").setCacheControl("max-age=600");
+    // Serve static files from LittleFS.
+    // This handler will serve 'index.html' for requests to the root ('/'),
+    // and any other file that is requested (e.g., '/favicon.ico', '/main.js').
+    // It should be placed after all API handlers and before onNotFound.
+    server.serveStatic("/", LittleFS, "/")
+          .setDefaultFile("index.html")
+          .setCacheControl("max-age=600");
 
     server.onNotFound(handleNotFound);
     server.begin();

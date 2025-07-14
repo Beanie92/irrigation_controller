@@ -8,7 +8,7 @@ document.addEventListener('DOMContentLoaded', () => {
     type: 'line',
     data: {
       datasets: [{
-        label: 'Current',
+        label: 'Current [A]',
         data: [],
         borderColor: 'rgba(75, 192, 192, 1)',
         tension: 0.1
@@ -23,7 +23,7 @@ document.addEventListener('DOMContentLoaded', () => {
           }
         },
         y: {
-          beginAtZero: false
+          beginAtZero: false,
         }
       }
     }
