@@ -8,3 +8,4 @@
 web-ui/node_modules
 web-ui/dist
 /src/data/
+/node_modules

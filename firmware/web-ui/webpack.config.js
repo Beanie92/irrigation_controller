@@ -15,10 +15,6 @@ module.exports = {
     path: path.resolve(__dirname, '../src/data'),
     clean: true, // Clean the output directory before emit.
   },
-  // optimization: {
-  //   minimize: true,
-  //   minimizer: [new TerserPlugin()],
-  // },
   plugins: [
     new HtmlWebpackPlugin({
       template: './src/index.html',
@@ -41,8 +37,9 @@ module.exports = {
       test: /\.(js|html|css|svg|webp)$/,
       filename: '[path][base].gz',
       algorithm: 'gzip',
-      threshold: 10240,
+      threshold: 1024,
       minRatio: 0.8,
+      deleteOriginalAssets: true,
     }),
   ],
 };

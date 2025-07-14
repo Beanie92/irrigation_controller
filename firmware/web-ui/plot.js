@@ -1,45 +1,32 @@
-import { createChart, LineSeries } from 'lightweight-charts';
+import { Chart, registerables } from 'chart.js';
+import 'chartjs-adapter-date-fns';
+Chart.register(...registerables);
 
 document.addEventListener('DOMContentLoaded', () => {
-  console.log("Plot script started");
-
-  const chartContainer = document.getElementById('chart-container');
-  console.log("Chart container:", chartContainer);
-  if (chartContainer) {
-    console.log("Chart container clientWidth:", chartContainer.clientWidth);
-  }
-
-  const chart = createChart(chartContainer, {
-    width: chartContainer.clientWidth,
-    height: 300,
-    layout: {
-      backgroundColor: '#ffffff',
-      textColor: 'rgba(33, 56, 77, 1)',
+  const ctx = document.getElementById('currentChart').getContext('2d');
+  const currentChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      datasets: [{
+        label: 'Current',
+        data: [],
+        borderColor: 'rgba(75, 192, 192, 1)',
+        tension: 0.1
+      }]
     },
-    grid: {
-      vertLines: {
-        color: 'rgba(197, 203, 206, 0.5)',
-      },
-      horzLines: {
-        color: 'rgba(197, 203, 206, 0.5)',
-      },
-    },
-    timeScale: {
-      timeVisible: true,
-      secondsVisible: true,
-    },
-  });
-
-  const lineSeries = chart.addSeries(LineSeries, {
-    color: 'rgba(75, 192, 192, 1)',
-    lineWidth: 2,
-  });
-
-  chart.priceScale().applyOptions({
-    borderColor: 'rgba(197, 203, 206, 0.8)',
-    tickMarkFormatter: (price) => {
-      return price.toFixed(3);
-    },
+    options: {
+      scales: {
+        x: {
+          type: 'time',
+          time: {
+            unit: 'second'
+          }
+        },
+        y: {
+          beginAtZero: false
+        }
+      }
+    }
   });
 
   let lastTimestamp = 0;
@@ -52,18 +39,18 @@ document.addEventListener('DOMContentLoaded', () => {
       .then(apiData => {
         if (apiData.length === 0) return;
 
-        const formattedData = apiData.map(entry => ({
-          time: entry.timestamp,
-          value: entry.current
+        const newData = apiData.map(entry => ({
+          x: entry.timestamp,
+          y: entry.current
         }));
 
         if (isInitialLoad) {
-          lineSeries.setData(formattedData);
+          currentChart.data.datasets[0].data = newData;
         } else {
-          formattedData.forEach(dataPoint => {
-            lineSeries.update(dataPoint);
-          });
+          currentChart.data.datasets[0].data.push(...newData);
         }
+        
+        currentChart.update();
 
         // Update the last timestamp from the most recent data point
         lastTimestamp = apiData[apiData.length - 1].timestamp;

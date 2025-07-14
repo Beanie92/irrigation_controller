@@ -156,9 +156,9 @@ void handleGetCurrent(AsyncWebServerRequest *request) {
 }
 
 void handleGetCurrentHistory(AsyncWebServerRequest *request) {
-    uint32_t since = 0;
+    uint64_t since = 0;
     if (request->hasParam("since")) {
-        since = request->getParam("since")->value().toInt();
+        since = strtoull(request->getParam("since")->value().c_str(), NULL, 10);
     }
 
     const std::vector<CurrentHistoryEntry>& history = get_current_history();
@@ -168,10 +168,10 @@ void handleGetCurrentHistory(AsyncWebServerRequest *request) {
 
     JsonArray historyArray = doc.to<JsonArray>();
     for (const auto& entry : history) {
-        uint32_t unix_time = get_unix_time_from_millis(entry.timestamp);
-        if (unix_time > since) {
+        uint64_t unix_time_ms = get_unix_time_ms_from_millis(entry.timestamp);
+        if (unix_time_ms > since) {
             JsonObject obj = historyArray.createNestedObject();
-            obj["timestamp"] = unix_time;
+            obj["timestamp"] = unix_time_ms;
             obj["current"] = entry.current;
         }
     }

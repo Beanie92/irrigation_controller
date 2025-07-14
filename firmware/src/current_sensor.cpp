@@ -61,10 +61,6 @@ void update_current_history() {
 
     float current_now = read_wcs1800_current();
 
-    if (isnan(current_now)) {
-        return; // Do not record NaN values
-    }
-
     bool cov_triggered = abs(current_now - last_recorded_current) > COV_THRESHOLD;
     bool time_triggered = (current_time - last_update_time) > MIN_TIME_INTERVAL_MS;
 
