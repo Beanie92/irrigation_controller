@@ -26,7 +26,7 @@ void setup_current_sensor() {
  * @return The current in Amperes.
  */
 float read_wcs1800_current() {
-  const int NUM_SAMPLES = 100;
+  const int NUM_SAMPLES = 10;
   float total_voltage_mv = 0;
 
   for (int i = 0; i < NUM_SAMPLES; i++) {
