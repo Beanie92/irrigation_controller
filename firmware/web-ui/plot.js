@@ -10,7 +10,7 @@ document.addEventListener('DOMContentLoaded', () => {
       datasets: [{
         label: 'Current [A]',
         data: [],
-        borderColor: 'rgba(75, 192, 192, 1)',
+        borderColor: '#7eb659',
         tension: 0.1
       }]
     },

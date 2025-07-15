@@ -6,7 +6,7 @@
 #include <cstdint>
 
 struct CurrentHistoryEntry {
-  uint32_t timestamp;
+  uint64_t timestamp; // Using uint64_t to store milliseconds for long-running applications
   float current;
 };
 
