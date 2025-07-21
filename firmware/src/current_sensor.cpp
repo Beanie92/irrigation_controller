@@ -26,7 +26,7 @@ void setup_current_sensor() {
  * @return The current in Amperes.
  */
 float read_wcs1800_current() {
-  const int NUM_SAMPLES = 10;
+  const int NUM_SAMPLES = 5;
   float total_voltage_mv = 0;
 
   for (int i = 0; i < NUM_SAMPLES; i++) {
@@ -47,7 +47,7 @@ float read_wcs1800_current() {
 }
 
 // --- Current History ---
-const float COV_THRESHOLD = 0.2f; // 200 mA
+const float COV_THRESHOLD = 0.01f; // 200 mA
 const uint64_t MIN_TIME_INTERVAL_US = 900000ULL * 1000; // 15 minutes in microseconds
 const size_t MAX_HISTORY_SIZE = 200;
 const uint64_t MIN_SAMPLE_INTERVAL_US = 500ULL * 1000; // Minimum time between samples in microseconds

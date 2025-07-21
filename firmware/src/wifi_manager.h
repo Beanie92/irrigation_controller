@@ -8,6 +8,7 @@
 // Initialization and main loop handler
 void wifi_manager_init();
 void wifi_manager_handle();
+void wifi_manager_check_connection();
 
 // Status getters for UI and other modules
 bool wifi_manager_is_connected();

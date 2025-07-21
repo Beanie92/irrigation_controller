@@ -37,6 +37,11 @@ static bool isConnecting = false;
 static bool portalRunning = false;
 static uint64_t time_offset_ms = 0; // Offset between boot time and Unix time in milliseconds
 
+// For automatic reconnection
+static unsigned long lastConnectionCheck = 0;
+const unsigned long connectionCheckInterval = 10000; // Check every 10 seconds
+static bool isReconnecting = false;
+
 static void sync_time_with_ntp();
 static void display_wifi_info();
 static void display_portal_info();
@@ -82,11 +87,53 @@ void wifi_manager_init() {
     portalRunning = false;
 }
 
+void wifi_manager_check_connection() {
+    // Don't check connection if portal is running or during initial connection
+    if (portalRunning || isConnecting) {
+        return;
+    }
+
+    // Check connection status periodically
+    if (millis() - lastConnectionCheck < connectionCheckInterval) {
+        return; // Not time to check yet
+    }
+    lastConnectionCheck = millis();
+
+    if (WiFi.status() != WL_CONNECTED) {
+        // Connection is lost
+        if (wifiConnected) {
+            DEBUG_PRINTLN("WiFi connection lost!");
+            wifiConnected = false;
+            timeSync = false;
+            isReconnecting = false; // Reset reconnecting state to allow a new attempt
+        }
+
+        // Try to reconnect if we are not already trying
+        if (!isReconnecting) {
+            DEBUG_PRINTLN("Attempting to reconnect WiFi...");
+            WiFi.reconnect(); // Non-blocking call
+            isReconnecting = true;
+        }
+    } else { // WiFi.status() == WL_CONNECTED
+        // Connection is active
+        if (!wifiConnected) {
+            // This means we have just reconnected
+            DEBUG_PRINTLN("WiFi reconnected successfully!");
+            wifiConnected = true;
+            sync_time_with_ntp(); // Resync time after reconnecting
+        }
+        isReconnecting = false; // Connection is stable, reset flag
+    }
+}
+
 void wifi_manager_handle() {
-    // This is now only needed if the portal is running
+    // Handle the WiFiManager portal if it's running
     if (portalRunning) {
         wm.process();
     }
+
+    // Periodically check the connection status and attempt to reconnect if needed
+    wifi_manager_check_connection();
 }
 
 bool wifi_manager_is_connected() {
@@ -176,7 +223,7 @@ void wifi_manager_cancel_connection() {
 }
 
 void wifi_manager_update_system_time(SystemDateTime& dateTime) {
-    if (!timeSync) return;
+    if (!timeSync || !wifiConnected) return; // Also check for wifi connection
     time_t now;
     struct tm timeinfo;
     time(&now);
